@@ -14,6 +14,7 @@ type Song struct {
 	Plays       int                `json:"plays,omitempty" bson:"plays,omitempty"`
 	UploadedAt  primitive.DateTime `json:"uploadedAt" bson:"uploadedAt"`
 	Poster      string             `bson:"poster,omitempty" json:"poster,omitempty"`
+	Language    string             `json:"language" bson:"language"`
 }
 
 type Album struct {

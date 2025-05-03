@@ -72,6 +72,7 @@ func Autocompleter(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 }
 
 func SearchHandler(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	fmt.Println("----------")
 	entityType := ps.ByName("entityType") // Extract active tab type
 	log.Println("Received search request for:", entityType)
 

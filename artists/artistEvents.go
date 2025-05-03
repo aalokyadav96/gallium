@@ -11,6 +11,7 @@ import (
 	"naevis/userdata"
 	"naevis/utils"
 	"net/http"
+	_ "net/http/pprof"
 	"time"
 
 	"github.com/julienschmidt/httprouter"

@@ -5,6 +5,7 @@ import (
 	"naevis/merch"
 	"naevis/utils"
 	"net/http"
+	_ "net/http/pprof"
 
 	"github.com/julienschmidt/httprouter"
 )

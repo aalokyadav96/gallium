@@ -12,10 +12,12 @@ import (
 
 	"naevis/db"
 	"naevis/utils"
+	_ "net/http/pprof"
 
 	"github.com/julienschmidt/httprouter"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // SaveUploadedFile saves a multipart file to disk and returns the filename.
@@ -37,6 +39,65 @@ func SaveUploadedFile(file multipart.File, header *multipart.FileHeader, destFol
 	}
 	return fileName, nil
 }
+
+// // PostNewSong handles uploading a new song (audio + optional poster).
+// func PostNewSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+// 	artistID := ps.ByName("id")
+
+// 	if err := r.ParseMultipartForm(10 << 20); err != nil {
+// 		utils.RespondWithError(w, http.StatusBadRequest, "Invalid multipart form")
+// 		return
+// 	}
+
+// 	// audio upload (required)
+// 	audioFile, audioHeader, err := r.FormFile("audio")
+// 	if err != nil {
+// 		utils.RespondWithError(w, http.StatusBadRequest, "Audio file is required")
+// 		return
+// 	}
+// 	audioFileName, err := SaveUploadedFile(audioFile, audioHeader, "static/artistpic/songs")
+// 	if err != nil {
+// 		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to save audio file")
+// 		return
+// 	}
+
+// 	// poster upload (optional)
+// 	var posterFileName string
+// 	if posterFile, posterHeader, err := r.FormFile("poster"); err == nil {
+// 		posterFileName, err = SaveUploadedFile(posterFile, posterHeader, "static/artistpic/posters")
+// 		if err != nil {
+// 			utils.RespondWithError(w, http.StatusInternalServerError, "Failed to save poster image")
+// 			return
+// 		}
+// 	}
+
+// 	// assemble new song
+// 	newSong := Song{
+// 		SongID:      utils.GenerateIntID(12),
+// 		ArtistID:    artistID,
+// 		Title:       r.FormValue("title"),
+// 		Genre:       r.FormValue("genre"),
+// 		Duration:    r.FormValue("duration"),
+// 		Description: r.FormValue("description"),
+// 		AudioURL:    audioFileName,
+// 		Poster:      posterFileName,
+// 		Published:   true,
+// 		Plays:       0,
+// 		UploadedAt:  primitive.NewDateTimeFromTime(time.Now()),
+// 	}
+
+// 	// push into artist document using a filter on artistid
+// 	filter := bson.M{"artistid": artistID}
+// 	update := bson.M{"$push": bson.M{"songs": newSong}}
+
+// 	_, err = db.SongsCollection.UpdateOne(context.TODO(), filter, update)
+// 	if err != nil {
+// 		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to add song to artist")
+// 		return
+// 	}
+
+// 	utils.RespondWithJSON(w, http.StatusCreated, newSong)
+// }
 
 // PostNewSong handles uploading a new song (audio + optional poster).
 func PostNewSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -71,7 +132,7 @@ func PostNewSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 	// assemble new song
 	newSong := Song{
-		SongID:      primitive.NewObjectID().Hex(),
+		SongID:      utils.GenerateIntID(12),
 		ArtistID:    artistID,
 		Title:       r.FormValue("title"),
 		Genre:       r.FormValue("genre"),
@@ -84,40 +145,22 @@ func PostNewSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		UploadedAt:  primitive.NewDateTimeFromTime(time.Now()),
 	}
 
-	// push into artist document using a filter on artistid
+	// Upsert: If artistID exists, add song. If not, create new artist entry.
 	filter := bson.M{"artistid": artistID}
-	update := bson.M{"$push": bson.M{"songs": newSong}}
+	update := bson.M{
+		"$push":        bson.M{"songs": newSong},     // Add song to songs array
+		"$setOnInsert": bson.M{"artistid": artistID}, // Create a new artist entry if doesn't exist
+	}
 
-	_, err = db.SongsCollection.UpdateOne(context.TODO(), filter, update)
+	opts := options.Update().SetUpsert(true) // Upsert option ensures insertion if artist is missing
+
+	_, err = db.SongsCollection.UpdateOne(context.TODO(), filter, update, opts)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to add song to artist")
 		return
 	}
 
 	utils.RespondWithJSON(w, http.StatusCreated, newSong)
-}
-
-// DeleteSong removes a song by its songid.
-func DeleteSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	artistID := ps.ByName("id")
-	songID := ps.ByName("songId")
-	// songID := r.URL.Query().Get("songId")
-
-	if songID == "" {
-		utils.RespondWithError(w, http.StatusBadRequest, "songId is required")
-		return
-	}
-
-	filter := bson.M{"artistid": artistID}
-	update := bson.M{"$pull": bson.M{"songs": bson.M{"songid": songID}}}
-
-	_, err := db.SongsCollection.UpdateOne(context.TODO(), filter, update)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to delete song")
-		return
-	}
-
-	utils.RespondWithJSON(w, http.StatusOK, bson.M{"message": "Song deleted successfully"})
 }
 
 // EditSong updates song fields (title/genre/duration/description/audio/poster).
@@ -179,6 +222,29 @@ func EditSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	utils.RespondWithJSON(w, http.StatusOK, bson.M{"message": "Song updated successfully"})
 }
 
+// DeleteSong removes a song by its songid.
+func DeleteSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	artistID := ps.ByName("id")
+	// songID := r.URL.Query().Get("songId")
+	songID := ps.ByName("songId")
+
+	if songID == "" {
+		utils.RespondWithError(w, http.StatusBadRequest, "songId is required")
+		return
+	}
+
+	filter := bson.M{"artistid": artistID}
+	update := bson.M{"$pull": bson.M{"songs": bson.M{"songid": songID}}}
+
+	_, err := db.SongsCollection.UpdateOne(context.TODO(), filter, update)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to delete song")
+		return
+	}
+
+	utils.RespondWithJSON(w, http.StatusOK, bson.M{"message": "Song deleted successfully"})
+}
+
 // GetArtistsSongs returns all published songs for an artist.
 // If no songs exist, returns an empty array.
 func GetArtistsSongs(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -187,11 +253,13 @@ func GetArtistsSongs(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 	var result struct {
 		Songs []Song `bson:"songs"`
 	}
-
+	fmt.Println("---------------------", artistID)
 	// ignore errors; result.Songs will be nil if no document found
-	_ = db.SongsCollection.
-		FindOne(context.TODO(), bson.M{"artistid": artistID}).
-		Decode(&result)
+	err := db.SongsCollection.FindOne(context.TODO(), bson.M{"artistid": artistID}).Decode(&result)
+
+	if err != nil {
+		fmt.Println(err)
+	}
 
 	filtered := make([]Song, 0, len(result.Songs))
 	for _, s := range result.Songs {
