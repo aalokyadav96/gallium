@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"naevis/db"
 	"naevis/ratelim"
 	"naevis/routes"
 	"net/http"
@@ -15,6 +16,8 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/julienschmidt/httprouter"
 	"github.com/rs/cors"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // Middleware: Security headers
@@ -97,6 +100,8 @@ func main() {
 		ReadHeaderTimeout: 2 * time.Second,
 	}
 
+	setDBCollection()
+
 	// Register cleanup tasks on shutdown
 	server.RegisterOnShutdown(func() {
 		log.Println("🛑 Cleaning up resources before shutdown...")
@@ -126,6 +131,48 @@ func main() {
 	}
 
 	log.Println("✅ Server stopped cleanly")
+}
+
+func setDBCollection() {
+
+	// Initialize MongoDB connection
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	ClientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
+	db.Client, err = mongo.Connect(context.TODO(), ClientOptions)
+	if err != nil {
+		log.Fatalf("Failed to connect to MongoDB: %v", err)
+	}
+
+	// CreateIndexes(Client)
+	db.MapsCollection = db.Client.Database("eventdb").Collection("maps")
+	db.SettingsCollection = db.Client.Database("eventdb").Collection("settings")
+	db.ReviewsCollection = db.Client.Database("eventdb").Collection("reviews")
+	db.FollowingsCollection = db.Client.Database("eventdb").Collection("followings")
+	db.ItineraryCollection = db.Client.Database("eventdb").Collection("itinerary")
+	db.UserCollection = db.Client.Database("eventdb").Collection("users")
+	db.UserDataCollection = db.Client.Database("eventdb").Collection("userdata")
+	db.TicketsCollection = db.Client.Database("eventdb").Collection("ticks")
+	db.PurchasedTicketsCollection = db.Client.Database("eventdb").Collection("purticks")
+	db.PlacesCollection = db.Client.Database("eventdb").Collection("places")
+	db.BookingsCollection = db.Client.Database("eventdb").Collection("bookings")
+	db.SlotCollection = db.Client.Database("eventdb").Collection("slots")
+	db.PostsCollection = db.Client.Database("eventdb").Collection("posts")
+	db.FilesCollection = db.Client.Database("eventdb").Collection("files")
+	db.MerchCollection = db.Client.Database("eventdb").Collection("merch")
+	db.MenuCollection = db.Client.Database("eventdb").Collection("menu")
+	db.ActivitiesCollection = db.Client.Database("eventdb").Collection("activities")
+	db.EventsCollection = db.Client.Database("eventdb").Collection("events")
+	db.ArtistEventsCollection = db.Client.Database("eventdb").Collection("artistevents")
+	db.SongsCollection = db.Client.Database("eventdb").Collection("songs")
+	db.MediaCollection = db.Client.Database("eventdb").Collection("media")
+	db.ArtistsCollection = db.Client.Database("eventdb").Collection("artists")
+	db.CartoonsCollection = db.Client.Database("eventdb").Collection("cartoons")
+	db.ChatsCollection = db.Client.Database("eventdb").Collection("chats")
+	db.MessagesCollection = db.Client.Database("eventdb").Collection("messages")
 }
 
 // package main
