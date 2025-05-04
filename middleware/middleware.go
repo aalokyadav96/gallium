@@ -37,7 +37,6 @@ func Authenticate(next httprouter.Handle) httprouter.Handle {
 		token, err := jwt.ParseWithClaims(tokenString[7:], claims, func(token *jwt.Token) (any, error) {
 			return globals.JwtSecret, nil
 		})
-		fmt.Println(err)
 		if err != nil || !token.Valid {
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
 			return

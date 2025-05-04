@@ -112,29 +112,62 @@ func RemoveUserFile(userID, postID, hash string) {
 	}
 }
 
-func CheckUserInFile(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+func CheckUserInFile(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	tokenString := r.Header.Get("Authorization")
 	claims, err := profile.ValidateJWT(tokenString)
 	if err != nil {
-		log.Printf("JWT validation error: %v", err) // Log the error for debugging
+		log.Printf("JWT validation error: %v", err)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
+
 	var req struct {
 		Hash string `json:"hash"`
 	}
 
-	// Parse JSON request
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request", http.StatusBadRequest)
-		return
-	}
+	req.Hash = ps.ByName("hash")
+
+	// // Single decoding attempt
+	// if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	// 	log.Printf("Request decode error: %v", err)
+	// 	http.Error(w, "Invalid request", http.StatusBadRequest)
+	// 	return
+	// }
+
+	// log.Printf("Decoded request: %+v", req)
 
 	checkUserInFile(w, claims.UserID, req.Hash)
 }
 
+// func CheckUserInFile(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+// 	tokenString := r.Header.Get("Authorization")
+// 	claims, err := profile.ValidateJWT(tokenString)
+// 	if err != nil {
+// 		log.Printf("JWT validation error: %v", err) // Log the error for debugging
+// 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+// 		return
+// 	}
+
+// 	var req struct {
+// 		Hash string `json:"hash"`
+// 	}
+
+// 	fmt.Println("-------|-------")
+// 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+// 		log.Printf("Decode error: %v", err)
+// 		http.Error(w, "Invalid request", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	fmt.Println("-------|-------")
+// 	fmt.Println(req)
+
+// 	checkUserInFile(w, claims.UserID, req.Hash)
+// }
+
 func checkUserInFile(w http.ResponseWriter, userID, hash string) {
 	// Query MongoDB for the file using the hash
+
 	var file FileMetadata
 	err := db.FilesCollection.FindOne(context.TODO(), bson.M{"hash": hash}).Decode(&file)
 	if err != nil {
@@ -146,18 +179,18 @@ func checkUserInFile(w http.ResponseWriter, userID, hash string) {
 	// Check if the userID exists in userPosts
 	posts, exists := file.UserPosts[userID]
 	if exists && len(posts) > 0 {
-		// Fetch URLs for the user's posts
-		urls := make(map[string]string)
-		for _, postID := range posts {
-			if url, ok := file.PostURLs[postID]; ok {
-				urls[postID] = url
-			}
-		}
+		// // Fetch URLs for the user's posts
+		// urls := make(map[string]string)
+		// for _, postID := range posts {
+		// 	if url, ok := file.PostURLs[postID]; ok {
+		// 		urls[postID] = url
+		// 	}
+		// }
 
 		// Return the metadata
 		json.NewEncoder(w).Encode(map[string]any{
-			"exists":   true,
-			"postUrls": urls, // PostID-URL mapping for the user
+			"exists": true,
+			// "postUrls": urls, // PostID-URL mapping for the user
 		})
 		return
 	}

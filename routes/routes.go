@@ -27,6 +27,7 @@ import (
 	"naevis/suggestions"
 	"naevis/tickets"
 	"naevis/userdata"
+	"naevis/utils"
 	"naevis/websock"
 	"net/http"
 	_ "net/http/pprof"
@@ -227,8 +228,11 @@ func AddChatRoutes(router *httprouter.Router) {
 	router.PUT("/api/chat/messages/edit", middleware.Authenticate(chathandlers.EditMessageHandler))
 	router.DELETE("/api/chat/messages/delete", middleware.Authenticate(chathandlers.DeleteMessageHandler))
 	router.DELETE("/api/chat/chats/:chatid", middleware.Authenticate(chathandlers.DeleteChatHandler))
-	router.GET("/ws", websock.WsHandler)
 	router.POST("/api/chat/chats/create", chathandlers.CreateChatHandler)
+}
+
+func AddWebsockRoutes(router *httprouter.Router) {
+	router.GET("/ws", websock.WsHandler)
 }
 
 func AddMapRoutes(router *httprouter.Router) {
@@ -248,10 +252,14 @@ func AddItineraryRoutes(router *httprouter.Router) {
 	router.PUT("/api/itineraries/:id/publish", itinerary.PublishItinerary) //Publish an itinerary
 }
 
+func AddUtilityRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
+	router.GET("/api/check-file/:hash", rateLimiter.Limit(middleware.Authenticate(feed.CheckUserInFile)))
+	router.GET("/api/csrf", rateLimiter.Limit(middleware.Authenticate(utils.CSRF)))
+}
+
 func AddFeedRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
 	router.GET("/api/feed/feed", middleware.Authenticate(feed.GetPosts))
 	router.GET("/api/feed/post/:postid", rateLimiter.Limit(feed.GetPost))
-	router.POST("/api/check-file", rateLimiter.Limit(middleware.Authenticate(feed.CheckUserInFile)))
 	// router.POST("/api/feed/repost/:postid", feed.Repost)
 	// router.DELETE("/api/feed/repost/:postid", feed.DeleteRepost)
 	router.POST("/api/feed/post", ratelim.RateLimit(middleware.Authenticate(feed.CreateTweetPost)))

@@ -65,8 +65,11 @@ func setupRouter(rateLimiter *ratelim.RateLimiter) http.Handler {
 	routes.AddReviewsRoutes(router)
 	routes.AddSearchRoutes(router)
 	routes.AddSettingsRoutes(router)
+	routes.AddStaticRoutes(router)
 	routes.AddSuggestionsRoutes(router)
 	routes.AddTicketRoutes(router)
+	routes.AddUtilityRoutes(router, rateLimiter)
+	routes.AddWebsockRoutes(router)
 
 	routes.AddStaticRoutes(router)
 

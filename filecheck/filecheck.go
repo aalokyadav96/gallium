@@ -32,7 +32,7 @@ func CheckFileExists(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 
 	// Parse JSON request
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request", http.StatusBadRequest)
+		http.Error(w, "Invalid requeste", http.StatusBadRequest)
 		return
 	}
 
@@ -139,7 +139,7 @@ func RemoveUserFile(w http.ResponseWriter, r *http.Request, _ httprouter.Params)
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request", http.StatusBadRequest)
+		http.Error(w, "Invalid requestx", http.StatusBadRequest)
 		return
 	}
 

@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"naevis/models"
 	"naevis/search"
-	_ "net/http/pprof"
-	"os"
 )
 
 type Index struct {
@@ -35,13 +33,13 @@ type Index struct {
 
 // Emit event by sending JSON data to QUIC server
 func Emit(eventName string, content Index) error {
-	fmt.Println(eventName, "emitted")
+	fmt.Println(eventName, "emitted", content)
 	search.IndexDatainRedis(models.Index(content))
 	return nil
 }
 
 // SERP_URL - replace with the actual URL
-var SERP_URL = os.Getenv("SERP_URL") // Change to the actual endpoint
+// var SERP_URL = os.Getenv("SERP_URL") // Change to the actual endpoint
 
 // func Printer(jsonData []byte) error {
 // 	start := time.Now()
