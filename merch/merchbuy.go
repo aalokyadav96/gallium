@@ -157,7 +157,7 @@ func buyxMerch(w http.ResponseWriter, request MerchPurchaseRequest, requestingUs
 	// Find the merch in the database
 	// collection := client.Database("eventdb").Collection("merch")
 	var merch structs.Merch // Define the Merch struct based on your schema
-	err := db.MerchCollection.FindOne(context.TODO(), bson.M{"eventid": eventID, "merchid": merchID}).Decode(&merch)
+	err := db.MerchCollection.FindOne(context.TODO(), bson.M{"entity_id": eventID, "merchid": merchID}).Decode(&merch)
 	if err != nil {
 		http.Error(w, "Merch not found or other error", http.StatusNotFound)
 		return
@@ -171,7 +171,7 @@ func buyxMerch(w http.ResponseWriter, request MerchPurchaseRequest, requestingUs
 
 	// Decrease the merch stock by the requested quantity
 	update := bson.M{"$inc": bson.M{"stock": -stockRequested}}
-	_, err = db.MerchCollection.UpdateOne(context.TODO(), bson.M{"eventid": eventID, "merchid": merchID}, update)
+	_, err = db.MerchCollection.UpdateOne(context.TODO(), bson.M{"entity_id": eventID, "merchid": merchID}, update)
 	if err != nil {
 		http.Error(w, "Failed to update merch stock", http.StatusInternalServerError)
 		return
