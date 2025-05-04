@@ -71,8 +71,6 @@ func setupRouter(rateLimiter *ratelim.RateLimiter) http.Handler {
 	routes.AddUtilityRoutes(router, rateLimiter)
 	routes.AddWebsockRoutes(router)
 
-	routes.AddStaticRoutes(router)
-
 	// CORS setup (adjust AllowedOrigins in production)
 	allowedOrigins := []string{"https://zincate.netlify.app"}
 	if os.Getenv("ENV") == "development" {
