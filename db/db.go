@@ -35,8 +35,10 @@ var (
 	MediaCollection            *mongo.Collection
 	ArtistsCollection          *mongo.Collection
 	CartoonsCollection         *mongo.Collection
+	ForumsCollection           *mongo.Collection
 	ChatsCollection            *mongo.Collection
 	MessagesCollection         *mongo.Collection
+	ReportsCollection          *mongo.Collection
 	Client                     *mongo.Client
 )
 
@@ -92,7 +94,9 @@ func InitMongoDB() error {
 	ArtistsCollection = Client.Database("eventdb").Collection("artists")
 	CartoonsCollection = Client.Database("eventdb").Collection("cartoons")
 	ChatsCollection = Client.Database("eventdb").Collection("chats")
+	ForumsCollection = Client.Database("eventdb").Collection("forums")
 	MessagesCollection = Client.Database("eventdb").Collection("messages")
+	ReportsCollection = Client.Database("eventdb").Collection("reports")
 
 	log.Println("✅ Successfully connected to MongoDB")
 	return nil

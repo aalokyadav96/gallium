@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"naevis/db"
+	"naevis/newchat"
 	"naevis/ratelim"
 	"naevis/routes"
 	"net/http"
@@ -43,7 +44,7 @@ func Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 }
 
 // Set up all routes and middleware layers
-func setupRouter(rateLimiter *ratelim.RateLimiter) http.Handler {
+func setupRouter(rateLimiter *ratelim.RateLimiter, hub *newchat.Hub) http.Handler {
 	router := httprouter.New()
 	router.GET("/health", Index)
 
@@ -53,10 +54,12 @@ func setupRouter(rateLimiter *ratelim.RateLimiter) http.Handler {
 	routes.AddAuthRoutes(router)
 	routes.AddCartoonRoutes(router)
 	routes.AddChatRoutes(router)
+	routes.AddForumRoutes(router)
 	routes.AddEventsRoutes(router)
 	routes.AddFeedRoutes(router, rateLimiter)
 	routes.AddHomeFeedRoutes(router)
 	routes.AddItineraryRoutes(router)
+	routes.AddNewChatRoutes(router, hub)
 	routes.AddMapRoutes(router)
 	routes.AddMediaRoutes(router)
 	routes.AddMerchRoutes(router)
@@ -109,8 +112,12 @@ func main() {
 	// 	log.Fatalf("❌ Rate limiter setup failed: %v", err)
 	// }
 
+	hub := newchat.NewHub()
+	go hub.Run()
+	go newchat.CleanupOrphans()
+
 	rateLimiter := ratelim.NewRateLimiter()
-	handler := setupRouter(rateLimiter)
+	handler := setupRouter(rateLimiter, hub)
 
 	server := &http.Server{
 		Addr:              ":4000",

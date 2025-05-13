@@ -1,6 +1,10 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
+)
 
 // Event struct for MongoDB documents
 type Event struct {
@@ -53,4 +57,36 @@ type Result struct {
 	Contact     string    `json:"contact,omitempty"`
 	Image       string    `json:"image,omitempty"`
 	Link        string    `json:"link,omitempty"`
+}
+
+type Report struct {
+	ID         primitive.ObjectID `bson:"_id,omitempty"`
+	ReportedBy string             `bson:"reportedBy"`
+	TargetID   string             `bson:"targetId"`   // postId, commentId, userId etc.
+	TargetType string             `bson:"targetType"` // "post", "comment", "user", "media", etc.
+	Reason     string             `bson:"reason"`
+	Notes      string             `bson:"notes,omitempty"`
+	Status     string             `bson:"status"` // "pending", "resolved", "ignored"
+	CreatedAt  time.Time          `bson:"createdAt"`
+	UpdatedAt  time.Time          `bson:"updatedAt"`
+}
+
+type Message struct {
+	ID        primitive.ObjectID `bson:"_id,omitempty" json:"_id"`
+	UserID    string             `bson:"userid,omitempty" json:"userid"`
+	ChatID    string             `bson:"chatId" json:"chatId"`
+	Text      string             `bson:"text" json:"text"`
+	CreatedAt time.Time          `bson:"createdAt" json:"createdAt"`
+}
+type Chat struct {
+	ID          primitive.ObjectID `bson:"_id,omitempty" json:"_id"`
+	Users       []string           `bson:"users" json:"users"`
+	LastMessage MessagePreview     `bson:"lastMessage" json:"lastMessage"`
+	ReadStatus  map[string]bool    `bson:"readStatus,omitempty" json:"readStatus,omitempty"`
+	UpdatedAt   time.Time          `bson:"updatedAt" json:"updatedAt"`
+}
+type MessagePreview struct {
+	Text      string    `bson:"text" json:"text"`
+	SenderID  string    `bson:"senderId" json:"senderId"`
+	Timestamp time.Time `bson:"timestamp" json:"timestamp"`
 }

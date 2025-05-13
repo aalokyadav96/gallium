@@ -8,19 +8,22 @@ import (
 	"naevis/auth"
 	"naevis/booking"
 	"naevis/cartoons"
-	"naevis/chathandlers"
+	"naevis/chats"
 	"naevis/comments"
 	"naevis/events"
 	"naevis/feed"
+	"naevis/forumhandlers"
 	"naevis/itinerary"
 	"naevis/maps"
 	"naevis/media"
 	"naevis/menu"
 	"naevis/merch"
 	"naevis/middleware"
+	"naevis/newchat"
 	"naevis/places"
 	"naevis/profile"
 	"naevis/ratelim"
+	"naevis/reports"
 	"naevis/reviews"
 	"naevis/search"
 	"naevis/settings"
@@ -47,12 +50,48 @@ func AddStaticRoutes(router *httprouter.Router) {
 	router.ServeFiles("/static/artistpic/*filepath", http.Dir("static/artistpic"))
 	router.ServeFiles("/static/cartoonpic/*filepath", http.Dir("static/cartoonpic"))
 	router.ServeFiles("/static/chatpic/*filepath", http.Dir("static/chatpic"))
+	router.ServeFiles("/static/newchatpic/*filepath", http.Dir("static/newchatpic"))
 }
 
 func AddActivityRoutes(router *httprouter.Router) {
 	router.POST("/api/activity/log", ratelim.RateLimit(middleware.Authenticate(activity.LogActivities)))
 	router.GET("/api/activity/get", middleware.Authenticate(activity.GetActivityFeed))
 
+}
+
+func AddNewChatRoutes(router *httprouter.Router, hub *newchat.Hub) {
+	// router.GET("/ws/newchat/:room", newchat.AuthMiddleware(newchat.WebSocketHandler(hub)))
+	router.GET("/ws/newchat/:room", newchat.WebSocketHandler(hub))
+	// router.POST("/newchat/upload", newchat.AuthMiddleware(newchat.UploadHandler(hub)))
+	router.POST("/newchat/upload", newchat.UploadHandler(hub))
+	// router.POST("/newchat/edit", newchat.AuthMiddleware(newchat.EditMessageHandler(hub)))
+	router.POST("/newchat/edit", newchat.EditMessageHandler(hub))
+	// router.POST("/newchat/delete", newchat.AuthMiddleware(newchat.DeleteMessageHandler(hub)))
+	router.POST("/newchat/delete", newchat.DeleteMessageHandler(hub))
+
+}
+
+func AddReportRoutes(router *httprouter.Router) {
+	router.POST("/report", ratelim.RateLimit(middleware.Authenticate(reports.ReportContent)))
+	router.GET("/reports", ratelim.RateLimit(middleware.Authenticate(reports.GetReports)))
+	router.PUT("/report/:id", ratelim.RateLimit(middleware.Authenticate(reports.UpdateReport)))
+}
+
+func AddChatRoutes(router *httprouter.Router) {
+	// router.POST("/api/chats/init", chats.ChatInit)
+	// router.GET("/api/chats/chat/:chatID", chats.ChatGet)
+	// router.POST("/api/chats/chat/:chatID/send", chats.SendMessageHandler)
+	// router.POST("/api/chats/init", chats.InitChat)
+	// router.GET("/api/chats/chat/:chatID", chats.GetChat)
+	// router.POST("/api/chats/chat/:chatID/upload", chats.Upload)
+	// router.GET("/ws/chats/:chatID", chats.WebSocket)
+
+	router.GET("/api/chats/all", middleware.Authenticate(chats.GetUserChats))
+	router.POST("/api/chats/init", middleware.Authenticate(chats.InitChat))
+	router.GET("/api/chat/:chatid", middleware.Authenticate(chats.GetChat))
+	router.POST("/api/chat/:chatid/message", middleware.Authenticate(chats.CreateMessage))
+	router.PUT("/api/chat/:chatid/message/:msgid", middleware.Authenticate(chats.UpdateMessage))
+	router.DELETE("/api/chat/:chatid/message/:msgid", middleware.Authenticate(chats.DeleteMessage))
 }
 
 func AddCommentsRoutes(router *httprouter.Router) {
@@ -218,21 +257,22 @@ func AddCartoonRoutes(router *httprouter.Router) {
 
 }
 
-func AddChatRoutes(router *httprouter.Router) {
+func AddForumRoutes(router *httprouter.Router) {
 
 	// Existing endpoints.
-	router.GET("/api/chat/contacts", middleware.Authenticate(chathandlers.ContactsHandler))
-	router.GET("/api/chat/chats", middleware.Authenticate(chathandlers.ChatsHandler))
-	router.GET("/api/chat/messages", middleware.Authenticate(chathandlers.MessagesHandler))
-	router.POST("/api/chat/messages/send", middleware.Authenticate(chathandlers.SendMessageHandler))
-	router.PUT("/api/chat/messages/edit", middleware.Authenticate(chathandlers.EditMessageHandler))
-	router.DELETE("/api/chat/messages/delete", middleware.Authenticate(chathandlers.DeleteMessageHandler))
-	router.DELETE("/api/chat/chats/:chatid", middleware.Authenticate(chathandlers.DeleteChatHandler))
-	router.POST("/api/chat/chats/create", chathandlers.CreateChatHandler)
+	router.GET("/api/forum/contacts", middleware.Authenticate(forumhandlers.ContactsHandler))
+	router.GET("/api/forum/chats", middleware.Authenticate(forumhandlers.ChatsHandler))
+	router.GET("/api/forum/messages", middleware.Authenticate(forumhandlers.MessagesHandler))
+	router.POST("/api/forum/messages/send", middleware.Authenticate(forumhandlers.SendMessageHandler))
+	router.PUT("/api/forum/messages/edit", middleware.Authenticate(forumhandlers.EditMessageHandler))
+	router.DELETE("/api/forum/messages/delete", middleware.Authenticate(forumhandlers.DeleteMessageHandler))
+	router.DELETE("/api/forum/chats/:chatid", middleware.Authenticate(forumhandlers.DeleteChatHandler))
+	router.POST("/api/forum/chats/create", middleware.Authenticate(forumhandlers.CreateChatHandler))
 }
 
 func AddWebsockRoutes(router *httprouter.Router) {
-	router.GET("/ws", websock.WsHandler)
+	router.GET("/ws/forums", websock.WsHandler)
+	// router.GET("/ws/chats/:chatID", chats.WebSocket)
 }
 
 func AddMapRoutes(router *httprouter.Router) {
