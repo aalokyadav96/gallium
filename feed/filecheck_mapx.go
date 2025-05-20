@@ -9,7 +9,7 @@ import (
 	"log"
 	"mime/multipart"
 	"naevis/db"
-	"naevis/profile"
+	"naevis/middleware"
 	"net/http"
 	"os"
 	"slices"
@@ -114,7 +114,7 @@ func RemoveUserFile(userID, postID, hash string) {
 
 func CheckUserInFile(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	tokenString := r.Header.Get("Authorization")
-	claims, err := profile.ValidateJWT(tokenString)
+	claims, err := middleware.ValidateJWT(tokenString)
 	if err != nil {
 		log.Printf("JWT validation error: %v", err)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -141,7 +141,7 @@ func CheckUserInFile(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 
 // func CheckUserInFile(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 // 	tokenString := r.Header.Get("Authorization")
-// 	claims, err := profile.ValidateJWT(tokenString)
+// 	claims, err := middleware.ValidateJWT(tokenString)
 // 	if err != nil {
 // 		log.Printf("JWT validation error: %v", err) // Log the error for debugging
 // 		http.Error(w, "Unauthorized", http.StatusUnauthorized)

@@ -235,7 +235,9 @@ func SendMessageHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Par
 		return
 	}
 
-	filenames, filetypes, err := processUploadedFiles(formData.Files)
+	basepath := "./static/chatpic/"
+
+	filenames, filetypes, err := ProcessUploadedFiles(formData.Files, basepath)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -297,7 +299,7 @@ func parseMessageForm(r *http.Request) (*MessageFormData, error) {
 	}, nil
 }
 
-func processUploadedFiles(files []*multipart.FileHeader) ([]string, []string, error) {
+func ProcessUploadedFiles(files []*multipart.FileHeader, basepath string) ([]string, []string, error) {
 	var filenames []string
 	var filetypes []string
 
@@ -314,7 +316,7 @@ func processUploadedFiles(files []*multipart.FileHeader) ([]string, []string, er
 
 		filename := utils.GenerateIntID(16)
 		extn, _ := getFileType(fileHeader.Filename)
-		if err := saveUploadedFile(file, filename, extn); err != nil {
+		if err := SaveUploadedFile(file, basepath, filename, extn); err != nil {
 			return nil, nil, fmt.Errorf("failed to save file: %v", err)
 		}
 
@@ -490,10 +492,9 @@ func DeleteMessageHandler(w http.ResponseWriter, r *http.Request, _ httprouter.P
 	json.NewEncoder(w).Encode(update)
 }
 
-func saveUploadedFile(src multipart.File, filename, extn string) error {
+func SaveUploadedFile(src multipart.File, basepath, filename, extn string) error {
 	defer src.Close()
-
-	fullPath := "./static/chatpic/" + filename + "." + extn
+	fullPath := basepath + "/" + filename + "." + extn
 	dst, err := os.Create(fullPath)
 	if err != nil {
 		return err
@@ -507,7 +508,7 @@ func saveUploadedFile(src multipart.File, filename, extn string) error {
 
 	// Check if file is a video and create poster
 	if isVideoFile(extn) {
-		posterPath := "./static/chatpic/" + filename + ".jpg"
+		posterPath := basepath + "/" + filename + ".jpg"
 		err = CreatePoster(fullPath, posterPath, "00:00:01") // 1-second timestamp
 		if err != nil {
 			return fmt.Errorf("failed to create poster: %w", err)
@@ -528,6 +529,7 @@ func isVideoFile(extn string) bool {
 
 // Creates a poster (thumbnail) from a video at a given time
 func CreatePoster(videoPath, posterPath, timestamp string) error {
+	log.Println(videoPath, posterPath, timestamp)
 	cmd := exec.Command(
 		"ffmpeg", "-i", videoPath,
 		"-ss", timestamp, "-vframes", "1",

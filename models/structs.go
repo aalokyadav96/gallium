@@ -59,25 +59,43 @@ type Result struct {
 	Link        string    `json:"link,omitempty"`
 }
 
+// type Report struct {
+// 	ID         primitive.ObjectID `bson:"_id,omitempty"`
+// 	ReportedBy string             `bson:"reportedBy"`
+// 	TargetID   string             `bson:"targetId"`   // postId, commentId, userId etc.
+// 	TargetType string             `bson:"targetType"` // "post", "comment", "user", "media", etc.
+// 	Reason     string             `bson:"reason"`
+// 	Notes      string             `bson:"notes,omitempty"`
+// 	Status     string             `bson:"status"` // "pending", "resolved", "ignored"
+// 	CreatedAt  time.Time          `bson:"createdAt"`
+// 	UpdatedAt  time.Time          `bson:"updatedAt"`
+// }
+
 type Report struct {
-	ID         primitive.ObjectID `bson:"_id,omitempty"`
-	ReportedBy string             `bson:"reportedBy"`
-	TargetID   string             `bson:"targetId"`   // postId, commentId, userId etc.
-	TargetType string             `bson:"targetType"` // "post", "comment", "user", "media", etc.
-	Reason     string             `bson:"reason"`
-	Notes      string             `bson:"notes,omitempty"`
-	Status     string             `bson:"status"` // "pending", "resolved", "ignored"
-	CreatedAt  time.Time          `bson:"createdAt"`
-	UpdatedAt  time.Time          `bson:"updatedAt"`
+	ID          primitive.ObjectID `bson:"_id,omitempty"       json:"id"`
+	ReportedBy  string             `bson:"reportedBy"          json:"reportedBy"`
+	TargetID    string             `bson:"targetId"            json:"targetId"`
+	TargetType  string             `bson:"targetType"          json:"targetType"`
+	Reason      string             `bson:"reason"              json:"reason"`
+	Notes       string             `bson:"notes,omitempty"     json:"notes,omitempty"`         // user’s optional notes
+	Status      string             `bson:"status"              json:"status"`                  // e.g. "pending", "reviewed", "resolved"
+	ReviewedBy  string             `bson:"reviewedBy,omitempty" json:"reviewedBy,omitempty"`   // moderator ID
+	ReviewNotes string             `bson:"reviewNotes,omitempty" json:"reviewNotes,omitempty"` // moderator’s notes
+	CreatedAt   time.Time          `bson:"createdAt"           json:"createdAt"`
+	UpdatedAt   time.Time          `bson:"updatedAt"           json:"updatedAt"`
 }
 
 type Message struct {
 	ID        primitive.ObjectID `bson:"_id,omitempty" json:"_id"`
-	UserID    string             `bson:"userid,omitempty" json:"userid"`
-	ChatID    string             `bson:"chatId" json:"chatId"`
-	Text      string             `bson:"text" json:"text"`
+	ChatID    string             `bson:"chatID" json:"chatID"`
+	UserID    string             `bson:"userID" json:"userID"`
+	Text      string             `bson:"text,omitempty" json:"text,omitempty"`
+	FileURL   string             `bson:"fileURL,omitempty" json:"fileURL,omitempty"`
+	FileType  string             `bson:"fileType,omitempty" json:"fileType,omitempty"` // "image" or "video"
 	CreatedAt time.Time          `bson:"createdAt" json:"createdAt"`
+	ReplyTo   *ReplyRef          `bson:"replyTo,omitempty" json:"replyTo,omitempty"`
 }
+
 type Chat struct {
 	ID          primitive.ObjectID `bson:"_id,omitempty" json:"_id"`
 	Users       []string           `bson:"users" json:"users"`
@@ -85,8 +103,24 @@ type Chat struct {
 	ReadStatus  map[string]bool    `bson:"readStatus,omitempty" json:"readStatus,omitempty"`
 	UpdatedAt   time.Time          `bson:"updatedAt" json:"updatedAt"`
 }
+
 type MessagePreview struct {
 	Text      string    `bson:"text" json:"text"`
 	SenderID  string    `bson:"senderId" json:"senderId"`
 	Timestamp time.Time `bson:"timestamp" json:"timestamp"`
+}
+
+// ReplyRef represents the client‐side “replyTo” payload.
+type ReplyRef struct {
+	ID   string `json:"id"`
+	User string `json:"user"`
+	Text string `json:"text"`
+}
+
+type Like struct {
+	ID         primitive.ObjectID `bson:"_id,omitempty"`
+	UserID     string             `bson:"user_id"`
+	EntityType string             `bson:"entity_type"` // e.g. "post"
+	EntityID   string             `bson:"entity_id"`   // e.g. post ID
+	CreatedAt  time.Time          `bson:"created_at"`
 }

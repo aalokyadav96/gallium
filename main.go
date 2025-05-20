@@ -51,12 +51,14 @@ func setupRouter(rateLimiter *ratelim.RateLimiter, hub *newchat.Hub) http.Handle
 	routes.AddActivityRoutes(router)
 	routes.AddAdsRoutes(router)
 	routes.AddArtistRoutes(router)
+	routes.AddBeatRoutes(router)
 	routes.AddAuthRoutes(router)
 	routes.AddCartoonRoutes(router)
 	routes.AddChatRoutes(router)
-	routes.AddForumRoutes(router)
+	routes.AddCommentsRoutes(router)
 	routes.AddEventsRoutes(router)
 	routes.AddFeedRoutes(router, rateLimiter)
+	routes.AddForumRoutes(router)
 	routes.AddHomeFeedRoutes(router)
 	routes.AddItineraryRoutes(router)
 	routes.AddNewChatRoutes(router, hub)
@@ -65,6 +67,7 @@ func setupRouter(rateLimiter *ratelim.RateLimiter, hub *newchat.Hub) http.Handle
 	routes.AddMerchRoutes(router)
 	routes.AddPlaceRoutes(router)
 	routes.AddProfileRoutes(router)
+	routes.AddReportRoutes(router)
 	routes.AddReviewsRoutes(router)
 	routes.AddSearchRoutes(router)
 	routes.AddSettingsRoutes(router)
@@ -72,7 +75,6 @@ func setupRouter(rateLimiter *ratelim.RateLimiter, hub *newchat.Hub) http.Handle
 	routes.AddSuggestionsRoutes(router)
 	routes.AddTicketRoutes(router)
 	routes.AddUtilityRoutes(router, rateLimiter)
-	routes.AddWebsockRoutes(router)
 
 	// CORS setup (adjust AllowedOrigins in production)
 	allowedOrigins := []string{"https://zincate.netlify.app"}
@@ -114,7 +116,7 @@ func main() {
 
 	hub := newchat.NewHub()
 	go hub.Run()
-	go newchat.CleanupOrphans()
+	// go newchat.CleanupOrphans()
 
 	rateLimiter := ratelim.NewRateLimiter()
 	handler := setupRouter(rateLimiter, hub)

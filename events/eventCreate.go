@@ -186,7 +186,7 @@ func CreateEvent(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		return
 	}
 
-	userdata.SetUserData("event", event.EventID, requestingUserID)
+	userdata.SetUserData("event", event.EventID, requestingUserID, "", "")
 
 	// ✅ Emit event for messaging queue (if needed)
 	go mq.Emit("event-created", mq.Index{

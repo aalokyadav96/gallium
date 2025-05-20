@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"log"
 	"naevis/db"
+	"naevis/middleware"
 	"naevis/mq"
-	"naevis/profile"
 	"naevis/structs"
 	"naevis/userdata"
 	"naevis/utils"
@@ -72,7 +72,7 @@ func CreateArtistEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	}
 
 	tokenString := r.Header.Get("Authorization")
-	claims, err := profile.ValidateJWT(tokenString)
+	claims, err := middleware.ValidateJWT(tokenString)
 	if err != nil {
 		log.Printf("JWT validation error: %v", err) // Log the error for debugging
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -151,7 +151,7 @@ func addEventToDB(artistEvent ArtistEvent) (string, error) {
 		return "", err
 	}
 
-	userdata.SetUserData("event", event.EventID, artistEvent.ArtistID)
+	userdata.SetUserData("event", event.EventID, artistEvent.ArtistID, "", "")
 
 	// ✅ Emit event for messaging queue (if needed)
 	go mq.Emit("event-created", mq.Index{

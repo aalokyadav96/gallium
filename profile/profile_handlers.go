@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"naevis/db"
-	"naevis/globals"
 	"naevis/middleware"
 	"naevis/mq"
 	"naevis/rdx"
@@ -14,7 +12,6 @@ import (
 	"naevis/utils"
 	"net/http"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/julienschmidt/httprouter"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -33,7 +30,7 @@ func GetUserProfile(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 	// 	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 	// }
 
-	claims, err := ValidateJWT(tokenString)
+	claims, err := middleware.ValidateJWT(tokenString)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -81,7 +78,7 @@ func GetUserProfile(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 
 // func GetUserProfile(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 // 	tokenString := r.Header.Get("Authorization")
-// 	claims, err := ValidateJWT(tokenString)
+// 	claims, err := middleware.ValidateJWT(tokenString)
 // 	if err != nil {
 // 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 // 		return
@@ -141,7 +138,7 @@ func GetProfile(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	// 	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 	// }
 
-	claims, err := ValidateJWT(tokenString)
+	claims, err := middleware.ValidateJWT(tokenString)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -194,7 +191,7 @@ func GetProfile(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 // 	// }
 // 	// tokenString = tokenString[7:]
 
-// 	claims, err := ValidateJWT(tokenString)
+// 	claims, err := middleware.ValidateJWT(tokenString)
 // 	if err != nil {
 // 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 // 		return
@@ -265,7 +262,7 @@ func GetProfile(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 // }
 
 func EditProfile(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	claims, err := ValidateJWT(r.Header.Get("Authorization"))
+	claims, err := middleware.ValidateJWT(r.Header.Get("Authorization"))
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -304,7 +301,7 @@ func EditProfile(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 
 func DeleteProfile(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	tokenString := r.Header.Get("Authorization")
-	claims, err := ValidateJWT(tokenString)
+	claims, err := middleware.ValidateJWT(tokenString)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -363,20 +360,20 @@ func UpdateProfileFields(w http.ResponseWriter, r *http.Request, claims *middlew
 	return update, nil
 }
 
-func ValidateJWT(tokenString string) (*middleware.Claims, error) {
-	if tokenString == "" || len(tokenString) < 8 {
-		return nil, fmt.Errorf("invalid token")
-	}
+// func middleware.ValidateJWT(tokenString string) (*middleware.Claims, error) {
+// 	if tokenString == "" || len(tokenString) < 8 {
+// 		return nil, fmt.Errorf("invalid token")
+// 	}
 
-	claims := &middleware.Claims{}
-	_, err := jwt.ParseWithClaims(tokenString[7:], claims, func(token *jwt.Token) (any, error) {
-		return globals.JwtSecret, nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("unauthorized: %w", err)
-	}
-	return claims, nil
-}
+// 	claims := &middleware.Claims{}
+// 	_, err := jwt.ParseWithClaims(tokenString[7:], claims, func(token *jwt.Token) (any, error) {
+// 		return globals.JwtSecret, nil
+// 	})
+// 	if err != nil {
+// 		return nil, fmt.Errorf("unauthorized: %w", err)
+// 	}
+// 	return claims, nil
+// }
 
 func RespondWithUserProfile(w http.ResponseWriter, username string) error {
 	var userProfile structs.User
@@ -396,7 +393,7 @@ func RespondWithUserProfile(w http.ResponseWriter, username string) error {
 // Update profile picture
 func EditProfilePic(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	// Validate JWT token
-	claims, err := ValidateJWT(r.Header.Get("Authorization"))
+	claims, err := middleware.ValidateJWT(r.Header.Get("Authorization"))
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -433,7 +430,7 @@ func EditProfilePic(w http.ResponseWriter, r *http.Request, _ httprouter.Params)
 // Update banner picture
 func EditProfileBanner(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	// Validate JWT token
-	claims, err := ValidateJWT(r.Header.Get("Authorization"))
+	claims, err := middleware.ValidateJWT(r.Header.Get("Authorization"))
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return

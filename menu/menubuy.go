@@ -177,7 +177,7 @@ func buyxMenu(w http.ResponseWriter, request MenuPurchaseRequest, requestingUser
 		return
 	}
 
-	userdata.SetUserData("menu", menuID, requestingUserID)
+	userdata.SetUserData("menu", menuID, requestingUserID, "place", placeId)
 
 	m := mq.Index{}
 	mq.Notify("menu-bought", m)

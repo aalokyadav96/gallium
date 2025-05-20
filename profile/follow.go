@@ -57,7 +57,7 @@ func HandleFollowAction(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 		return
 	}
 
-	userdata.SetUserData(action, targetUserID, currentUserID)
+	userdata.SetUserData(action, targetUserID, currentUserID, "profile", targetUserID)
 
 	response := map[string]any{
 		"isFollowing": action == "follow",
@@ -77,7 +77,7 @@ func ToggleUnFollow(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 }
 func GetFollowers(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	tokenString := r.Header.Get("Authorization")
-	claims, err := ValidateJWT(tokenString)
+	claims, err := middleware.ValidateJWT(tokenString)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -115,7 +115,7 @@ func GetFollowers(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 }
 func DoesFollow(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	tokenString := r.Header.Get("Authorization")
-	claims, err := ValidateJWT(tokenString)
+	claims, err := middleware.ValidateJWT(tokenString)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return

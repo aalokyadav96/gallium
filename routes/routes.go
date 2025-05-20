@@ -6,6 +6,7 @@ import (
 	"naevis/agi"
 	"naevis/artists"
 	"naevis/auth"
+	"naevis/beats"
 	"naevis/booking"
 	"naevis/cartoons"
 	"naevis/chats"
@@ -59,22 +60,43 @@ func AddActivityRoutes(router *httprouter.Router) {
 
 }
 
+func AddBeatRoutes(router *httprouter.Router) {
+	router.POST("/api/likes/:entitytype/:entityid", ratelim.RateLimit(middleware.Authenticate(beats.ToggleLike)))
+	router.GET("/api/likes/:entitytype/:entityid", ratelim.RateLimit(middleware.Authenticate(beats.GetLikeCount)))
+}
+
 func AddNewChatRoutes(router *httprouter.Router, hub *newchat.Hub) {
-	// router.GET("/ws/newchat/:room", newchat.AuthMiddleware(newchat.WebSocketHandler(hub)))
+	router.GET("/api/newchats/all", middleware.Authenticate(chats.GetUserChats))
+	// router.POST("/api/newchats/init", middleware.Authenticate(newchat.InitNewChat))
 	router.GET("/ws/newchat/:room", newchat.WebSocketHandler(hub))
-	// router.POST("/newchat/upload", newchat.AuthMiddleware(newchat.UploadHandler(hub)))
-	router.POST("/newchat/upload", newchat.UploadHandler(hub))
-	// router.POST("/newchat/edit", newchat.AuthMiddleware(newchat.EditMessageHandler(hub)))
+	router.POST("/newchat/upload", middleware.Authenticate(newchat.UploadHandler(hub)))
 	router.POST("/newchat/edit", newchat.EditMessageHandler(hub))
-	// router.POST("/newchat/delete", newchat.AuthMiddleware(newchat.DeleteMessageHandler(hub)))
 	router.POST("/newchat/delete", newchat.DeleteMessageHandler(hub))
 
 }
 
+func AddForumRoutes(router *httprouter.Router) {
+
+	// Existing endpoints.
+	// router.GET("/api/forum/contacts", middleware.Authenticate(forumhandlers.ContactsHandler))
+	router.GET("/api/forum/chats", middleware.Authenticate(forumhandlers.ChatsHandler))
+	router.GET("/api/forum/messages", middleware.Authenticate(forumhandlers.MessagesHandler))
+	router.POST("/api/forum/messages/send", middleware.Authenticate(forumhandlers.SendMessageHandler))
+	router.PUT("/api/forum/messages/edit", middleware.Authenticate(forumhandlers.EditMessageHandler))
+	router.DELETE("/api/forum/messages/delete", middleware.Authenticate(forumhandlers.DeleteMessageHandler))
+	router.DELETE("/api/forum/chats/:chatid", middleware.Authenticate(forumhandlers.DeleteChatHandler))
+	router.POST("/api/forum/chats/create", middleware.Authenticate(forumhandlers.CreateChatHandler))
+}
+
+func AddWebsockRoutes(router *httprouter.Router) {
+	router.GET("/ws/forums", websock.WsHandler)
+	// router.GET("/ws/chats/:chatID", chats.WebSocket)
+}
+
 func AddReportRoutes(router *httprouter.Router) {
-	router.POST("/report", ratelim.RateLimit(middleware.Authenticate(reports.ReportContent)))
-	router.GET("/reports", ratelim.RateLimit(middleware.Authenticate(reports.GetReports)))
-	router.PUT("/report/:id", ratelim.RateLimit(middleware.Authenticate(reports.UpdateReport)))
+	router.POST("/api/report", ratelim.RateLimit(middleware.Authenticate(reports.ReportContent)))
+	router.GET("/api/reports", ratelim.RateLimit(middleware.Authenticate(reports.GetReports)))
+	router.PUT("/api/report/:id", ratelim.RateLimit(middleware.Authenticate(reports.UpdateReport)))
 }
 
 func AddChatRoutes(router *httprouter.Router) {
@@ -92,6 +114,8 @@ func AddChatRoutes(router *httprouter.Router) {
 	router.POST("/api/chat/:chatid/message", middleware.Authenticate(chats.CreateMessage))
 	router.PUT("/api/chat/:chatid/message/:msgid", middleware.Authenticate(chats.UpdateMessage))
 	router.DELETE("/api/chat/:chatid/message/:msgid", middleware.Authenticate(chats.DeleteMessage))
+	router.GET("/ws/chat", chats.ChatWebSocket)
+	router.GET("/api/chat/:chatid/search", middleware.Authenticate(chats.SearchChat))
 }
 
 func AddCommentsRoutes(router *httprouter.Router) {
@@ -216,6 +240,7 @@ func AddProfileRoutes(router *httprouter.Router) {
 
 	router.GET("/api/user/:username", ratelim.RateLimit(profile.GetUserProfile))
 	router.GET("/api/user/:username/data", ratelim.RateLimit(middleware.Authenticate(userdata.GetUserProfileData)))
+	router.GET("/api/user/:username/udata", ratelim.RateLimit(middleware.Authenticate(userdata.GetOtherUserProfileData)))
 
 	router.PUT("/api/follows/:id", ratelim.RateLimit(middleware.Authenticate(profile.ToggleFollow)))
 	router.DELETE("/api/follows/:id", ratelim.RateLimit(middleware.Authenticate(profile.ToggleUnFollow)))
@@ -236,7 +261,7 @@ func AddArtistRoutes(router *httprouter.Router) {
 	router.GET("/api/artists/:id/songs", artists.GetArtistsSongs)
 	router.POST("/api/artists/:id/songs", artists.PostNewSong)
 	router.DELETE("/api/artists/:id/songs/:songId", artists.DeleteSong)
-	router.POST("/api/artists/:id/songs/:songId/edit", artists.EditSong) // ← new route
+	router.PUT("/api/artists/:id/songs/:songId/edit", artists.EditSong) // ← new route
 
 	router.GET("/api/artists/:id/albums", artists.GetArtistsAlbums)
 	router.GET("/api/artists/:id/posts", artists.GetArtistsPosts)
@@ -255,24 +280,6 @@ func AddCartoonRoutes(router *httprouter.Router) {
 	router.POST("/api/cartoons", cartoons.CreateCartoon)
 	router.PUT("/api/cartoons/:id", cartoons.UpdateCartoon)
 
-}
-
-func AddForumRoutes(router *httprouter.Router) {
-
-	// Existing endpoints.
-	router.GET("/api/forum/contacts", middleware.Authenticate(forumhandlers.ContactsHandler))
-	router.GET("/api/forum/chats", middleware.Authenticate(forumhandlers.ChatsHandler))
-	router.GET("/api/forum/messages", middleware.Authenticate(forumhandlers.MessagesHandler))
-	router.POST("/api/forum/messages/send", middleware.Authenticate(forumhandlers.SendMessageHandler))
-	router.PUT("/api/forum/messages/edit", middleware.Authenticate(forumhandlers.EditMessageHandler))
-	router.DELETE("/api/forum/messages/delete", middleware.Authenticate(forumhandlers.DeleteMessageHandler))
-	router.DELETE("/api/forum/chats/:chatid", middleware.Authenticate(forumhandlers.DeleteChatHandler))
-	router.POST("/api/forum/chats/create", middleware.Authenticate(forumhandlers.CreateChatHandler))
-}
-
-func AddWebsockRoutes(router *httprouter.Router) {
-	router.GET("/ws/forums", websock.WsHandler)
-	// router.GET("/ws/chats/:chatID", chats.WebSocket)
 }
 
 func AddMapRoutes(router *httprouter.Router) {

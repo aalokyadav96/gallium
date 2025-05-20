@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"log"
 	"naevis/db"
-	"naevis/profile"
+	"naevis/middleware"
 	"naevis/structs"
 	"net/http"
 	_ "net/http/pprof"
@@ -122,7 +122,7 @@ func PrintTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	uniqueCode := r.URL.Query().Get("uniqueCode")
 
 	tokenString := r.Header.Get("Authorization")
-	claims, err := profile.ValidateJWT(tokenString)
+	claims, err := middleware.ValidateJWT(tokenString)
 	if err != nil {
 		log.Printf("JWT validation error: %v", err)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)

@@ -128,7 +128,7 @@ func AddReview(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	userdata.SetUserData("review", review.ReviewID, userId)
+	userdata.SetUserData("review", review.ReviewID, userId, entityType, entityId)
 
 	m := mq.Index{EntityType: "review", EntityId: review.ReviewID, Method: "POST", ItemId: entityId, ItemType: entityType}
 	go mq.Emit("review-added", m)

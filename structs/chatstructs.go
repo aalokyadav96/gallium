@@ -34,12 +34,22 @@ func GetUserContacts(userID string) []Contact {
 
 // Data structures for Chat and Message.
 // Added ContactID to uniquely identify a chat per contact.
+//
+//	type Chat struct {
+//		ChatID    string `json:"chat_id" bson:"chat_id"`
+//		ContactID string `json:"contact_id" bson:"contact_id"`
+//		Name      string `json:"name" bson:"name"`
+//		Preview   string `json:"preview" bson:"preview"`
+//		Deleted   bool   `json:"deleted" bson:"deleted"`
+//	}
+
 type Chat struct {
-	ChatID    string `json:"chat_id" bson:"chat_id"`
-	ContactID string `json:"contact_id" bson:"contact_id"`
-	Name      string `json:"name" bson:"name"`
-	Preview   string `json:"preview" bson:"preview"`
-	Deleted   bool   `json:"deleted" bson:"deleted"`
+	ChatID  string    `json:"chat_id" bson:"chat_id"`
+	OwnerID string    `json:"contact_id" bson:"contact_id"`
+	Name    string    `json:"name" bson:"name"`
+	Preview string    `json:"preview" bson:"preview"`
+	Created time.Time `json:"created" bson:"created"`
+	Deleted bool      `json:"deleted" bson:"deleted"`
 }
 
 type Message struct {

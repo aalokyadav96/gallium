@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"log"
 	"naevis/db"
+	"naevis/middleware"
 	"naevis/mq"
-	"naevis/profile"
 	"naevis/structs"
 	"naevis/userdata"
 	"naevis/utils"
@@ -18,7 +18,7 @@ import (
 
 func CreateTweetPost(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	tokenString := r.Header.Get("Authorization")
-	claims, err := profile.ValidateJWT(tokenString)
+	claims, err := middleware.ValidateJWT(tokenString)
 	if err != nil {
 		log.Printf("JWT validation error: %v", err) // Log the error for debugging
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -100,7 +100,7 @@ func CreateTweetPost(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 		return
 	}
 
-	userdata.SetUserData("feedpost", newPost.PostID, userid)
+	userdata.SetUserData("feedpost", newPost.PostID, userid, "", "")
 	m := mq.Index{EntityType: "feedpost", EntityId: newPost.PostID, Method: "POST"}
 	go mq.Emit("post-created", m)
 

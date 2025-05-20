@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"naevis/db"
-	"naevis/profile"
+	"naevis/middleware"
 	"naevis/utils"
 
 	"github.com/julienschmidt/httprouter"
@@ -49,7 +49,7 @@ type Day struct {
 // Utility function to extract user ID from JWT
 func GetRequestingUserID(w http.ResponseWriter, r *http.Request) string {
 	tokenString := r.Header.Get("Authorization")
-	claims, err := profile.ValidateJWT(tokenString)
+	claims, err := middleware.ValidateJWT(tokenString)
 	if err != nil {
 		log.Printf("JWT validation error: %v", err)
 		return ""

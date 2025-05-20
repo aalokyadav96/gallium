@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"naevis/db"
+	"naevis/middleware"
 	"net/http"
 
 	"github.com/julienschmidt/httprouter"
@@ -54,7 +56,14 @@ func EditMessageHandler(hub *Hub) httprouter.Handle {
 		// 	return
 		// }
 
-		var userID = "ter"
+		var token = "Bearer " + r.URL.Query().Get("token")
+		claims, err := middleware.ValidateJWT(token)
+		if err != nil {
+			log.Println(err)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		userID := claims.UserID
 		msgID := payload.ID
 		if err := UpdateMessage(userID, msgID, payload.Content); err != nil {
 			http.Error(w, "forbidden", http.StatusForbidden)
@@ -80,7 +89,14 @@ func DeleteMessageHandler(hub *Hub) httprouter.Handle {
 		// 	return
 		// }
 
-		var userID = "ter"
+		var token = "Bearer " + r.URL.Query().Get("token")
+		claims, err := middleware.ValidateJWT(token)
+		if err != nil {
+			log.Println(err)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		userID := claims.UserID
 		msgID := payload.ID
 		if err := DeleteMessage(userID, msgID); err != nil {
 			http.Error(w, "forbidden", http.StatusForbidden)

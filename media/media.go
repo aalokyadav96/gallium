@@ -122,7 +122,7 @@ func AddMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	userdata.SetUserData("media", media.ID, requestingUserID)
+	userdata.SetUserData("media", media.ID, requestingUserID, entityType, entityID)
 
 	m := mq.Index{EntityType: "media", EntityId: media.ID, Method: "POST", ItemType: entityType, ItemId: entityID}
 	go mq.Emit("media-created", m)

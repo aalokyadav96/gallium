@@ -503,7 +503,7 @@ func BuyTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	m := mq.Index{}
 	mq.Notify("ticket-bought", m)
 
-	userdata.SetUserData("ticket", ticketID, userID)
+	userdata.SetUserData("ticket", ticketID, userID, m.EntityType, m.EntityId)
 
 	// // Broadcast WebSocket message
 	// message := map[string]any{

@@ -14,7 +14,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 
 	"naevis/db"
-	"naevis/profile"
+	"naevis/middleware"
 	"naevis/structs"
 )
 
@@ -25,7 +25,7 @@ func PrintStyledTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	token := r.Header.Get("Authorization")
 
 	// Validate JWT
-	claims, err := profile.ValidateJWT(token)
+	claims, err := middleware.ValidateJWT(token)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return

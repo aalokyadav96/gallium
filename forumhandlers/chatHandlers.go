@@ -9,14 +9,84 @@ import (
 	"naevis/utils"
 	"net/http"
 	_ "net/http/pprof"
+	"time"
 
 	"github.com/julienschmidt/httprouter"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // Handler for creating a new chat.
+// func CreateChatHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+// 	tokenString := r.Header.Get("Authorization")
+// 	claims, err := middleware.ValidateJWT(tokenString)
+// 	if err != nil {
+// 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+// 		return
+// 	}
+
+// 	if r.Method != http.MethodPost {
+// 		http.Error(w, "Invalid method", http.StatusMethodNotAllowed)
+// 		return
+// 	}
+
+// 	// Expected payload: { "contact_id": 3 }
+// 	var req struct {
+// 		ContactID string `json:"contact_id"`
+// 	}
+// 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+// 		http.Error(w, "Invalid request body", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	userContacts := structs.GetUserContacts(claims.UserID)
+
+// 	// Find the contact in the dummy contacts list.
+// 	var selectedContact *structs.Contact
+// 	for _, contact := range userContacts {
+// 		if contact.ID == req.ContactID {
+// 			selectedContact = &contact
+// 			break
+// 		}
+// 	}
+// 	if selectedContact == nil {
+// 		http.Error(w, "Contact not found", http.StatusNotFound)
+// 		return
+// 	}
+
+// 	// Check if a chat already exists for this contact.
+// 	var existingChat structs.Chat
+// 	err = db.ForumsCollection.FindOne(structs.Ctx, bson.M{"contact_id": req.ContactID}).Decode(&existingChat)
+// 	if err == nil {
+// 		// Chat exists, so return it.
+// 		w.Header().Set("Content-Type", "application/json")
+// 		json.NewEncoder(w).Encode(existingChat)
+// 		return
+// 	} else if err != mongo.ErrNoDocuments {
+// 		// Some other error occurred.
+// 		http.Error(w, "Error checking existing chat: "+err.Error(), http.StatusInternalServerError)
+// 		return
+// 	}
+
+// 	// No existing chat found; create a new Chat struct.
+// 	newChat := structs.Chat{
+// 		ChatID:    utils.GenerateChatID(),
+// 		ContactID: req.ContactID,
+// 		Name:      selectedContact.Name,
+// 		Preview:   "", // Optionally, set a default preview.
+// 	}
+
+// 	// Insert the new chat into MongoDB.
+// 	_, err = db.ForumsCollection.InsertOne(structs.Ctx, newChat)
+// 	if err != nil {
+// 		http.Error(w, "Failed to create chat: "+err.Error(), http.StatusInternalServerError)
+// 		return
+// 	}
+
+// 	w.Header().Set("Content-Type", "application/json")
+// 	json.NewEncoder(w).Encode(newChat)
+// }
+
 func CreateChatHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	tokenString := r.Header.Get("Authorization")
 	claims, err := middleware.ValidateJWT(tokenString)
@@ -30,56 +100,25 @@ func CreateChatHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Para
 		return
 	}
 
-	// Expected payload: { "contact_id": 3 }
 	var req struct {
-		ContactID string `json:"contact_id"`
+		Title string `json:"title"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Title == "" {
+		http.Error(w, "Invalid request body or missing title", http.StatusBadRequest)
 		return
 	}
 
-	userContacts := structs.GetUserContacts(claims.UserID)
-
-	// Find the contact in the dummy contacts list.
-	var selectedContact *structs.Contact
-	for _, contact := range userContacts {
-		if contact.ID == req.ContactID {
-			selectedContact = &contact
-			break
-		}
-	}
-	if selectedContact == nil {
-		http.Error(w, "Contact not found", http.StatusNotFound)
-		return
-	}
-
-	// Check if a chat already exists for this contact.
-	var existingChat structs.Chat
-	err = db.ForumsCollection.FindOne(structs.Ctx, bson.M{"contact_id": req.ContactID}).Decode(&existingChat)
-	if err == nil {
-		// Chat exists, so return it.
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(existingChat)
-		return
-	} else if err != mongo.ErrNoDocuments {
-		// Some other error occurred.
-		http.Error(w, "Error checking existing chat: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// No existing chat found; create a new Chat struct.
 	newChat := structs.Chat{
-		ChatID:    utils.GenerateChatID(),
-		ContactID: req.ContactID,
-		Name:      selectedContact.Name,
-		Preview:   "", // Optionally, set a default preview.
+		ChatID:  utils.GenerateChatID(),
+		Name:    req.Title,
+		OwnerID: claims.UserID,
+		Preview: "",
+		Created: time.Now(),
 	}
 
-	// Insert the new chat into MongoDB.
 	_, err = db.ForumsCollection.InsertOne(structs.Ctx, newChat)
 	if err != nil {
-		http.Error(w, "Failed to create chat: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Failed to create thread: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 

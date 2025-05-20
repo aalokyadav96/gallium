@@ -68,3 +68,18 @@ func ValidateJWT(tokenString string) (*Claims, error) {
 	}
 	return claims, nil
 }
+
+// func ValidateJWT(tokenString string) (*middleware.Claims, error) {
+// 	if tokenString == "" || len(tokenString) < 8 {
+// 		return nil, fmt.Errorf("invalid token")
+// 	}
+
+// 	claims := &middleware.Claims{}
+// 	_, err := jwt.ParseWithClaims(tokenString[7:], claims, func(token *jwt.Token) (any, error) {
+// 		return globals.JwtSecret, nil
+// 	})
+// 	if err != nil {
+// 		return nil, fmt.Errorf("unauthorized: %w", err)
+// 	}
+// 	return claims, nil
+// }

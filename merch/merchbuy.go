@@ -177,7 +177,7 @@ func buyxMerch(w http.ResponseWriter, request MerchPurchaseRequest, requestingUs
 		return
 	}
 
-	userdata.SetUserData("merch", merchID, requestingUserID)
+	userdata.SetUserData("merch", merchID, requestingUserID, merch.EntityType, merch.EntityID)
 
 	m := mq.Index{}
 	mq.Notify("merch-bought", m)

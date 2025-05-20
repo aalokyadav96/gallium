@@ -13,7 +13,10 @@ import (
 
 var (
 	MapsCollection             *mongo.Collection
+	CommentsCollection         *mongo.Collection
+	RoomsCollection            *mongo.Collection
 	UserCollection             *mongo.Collection
+	LikesCollection            *mongo.Collection
 	ItineraryCollection        *mongo.Collection
 	UserDataCollection         *mongo.Collection
 	TicketsCollection          *mongo.Collection
@@ -71,9 +74,12 @@ func InitMongoDB() error {
 
 	// CreateIndexes(Client)
 	MapsCollection = Client.Database("eventdb").Collection("maps")
+	CommentsCollection = Client.Database("eventdb").Collection("comments")
+	RoomsCollection = Client.Database("eventdb").Collection("rooms")
 	SettingsCollection = Client.Database("eventdb").Collection("settings")
 	ReviewsCollection = Client.Database("eventdb").Collection("reviews")
 	FollowingsCollection = Client.Database("eventdb").Collection("followings")
+	LikesCollection = Client.Database("eventdb").Collection("likes")
 	ItineraryCollection = Client.Database("eventdb").Collection("itinerary")
 	UserCollection = Client.Database("eventdb").Collection("users")
 	UserDataCollection = Client.Database("eventdb").Collection("userdata")

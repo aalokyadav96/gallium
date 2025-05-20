@@ -254,7 +254,7 @@ func CreatePlace(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 
 	utils.CreateThumb(place.PlaceID, bannerDir, ".jpg", 300, 200)
 
-	userdata.SetUserData("place", place.PlaceID, requestingUserID)
+	userdata.SetUserData("place", place.PlaceID, requestingUserID, "", "")
 	go mq.Emit("place-created", mq.Index{EntityType: "place", EntityId: place.PlaceID, Method: "POST"})
 
 	respondWithJSON(w, http.StatusCreated, place)

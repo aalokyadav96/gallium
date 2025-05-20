@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"naevis/db"
-	"naevis/profile"
+	"naevis/middleware"
 
 	"github.com/julienschmidt/httprouter"
 	"go.mongodb.org/mongo-driver/bson"
@@ -22,7 +22,7 @@ type RepostRequest struct {
 
 // RepostHandler handles reposting an existing post
 func Repost(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	claims, err := profile.ValidateJWT(r.Header.Get("Authorization"))
+	claims, err := middleware.ValidateJWT(r.Header.Get("Authorization"))
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -125,7 +125,7 @@ func GetFeed(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 }
 
 func DeleteRepost(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	claims, err := profile.ValidateJWT(r.Header.Get("Authorization"))
+	claims, err := middleware.ValidateJWT(r.Header.Get("Authorization"))
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
