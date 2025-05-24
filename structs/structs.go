@@ -85,9 +85,9 @@ type Setting struct {
 
 type Post struct {
 	// ID        any `bson:"_id,omitempty" json:"id"`
+	Username string   `bson:"username" json:"username"`
 	PostID   string   `bson:"postid,omitempty" json:"postid"`
 	UserID   string   `json:"userid" bson:"userid"`
-	Username string   `bson:"username" json:"username"`
 	Text     string   `bson:"text" json:"text"`
 	Type     string   `bson:"type" json:"type"`   // Post type (e.g., "text", "image", "video", "blog", etc.)
 	Media    []string `bson:"media" json:"media"` // Media URLs (images, videos, etc.)
@@ -105,9 +105,9 @@ type Post struct {
 
 type BlogPost struct {
 	// ID        any `bson:"_id,omitempty" json:"id"`
+	// Username  string   `json:"username" bson:"username"`
 	PostID    string   `bson:"postid,omitempty" json:"postid"`
 	UserID    string   `json:"userid" bson:"userid"`
-	Username  string   `json:"username" bson:"username"`
 	Title     string   `bson:"title" json:"title"`
 	Text      string   `bson:"text" json:"text"`
 	Type      string   `bson:"type" json:"type"`   // Post type (e.g., "text", "image", "video", "blog", etc.)
@@ -131,7 +131,7 @@ type Activity struct {
 	IPAddress    string              `json:"ipAddress,omitempty" bson:"ipAddress,omitempty"`
 	DeviceInfo   string              `json:"deviceInfo,omitempty" bson:"deviceInfo,omitempty"`
 	ID           primitive.ObjectID  `json:"id" bson:"_id,omitempty"`
-	UserID       primitive.ObjectID  `json:"user_id" bson:"user_id"`
+	UserID       string              `json:"user_id" bson:"user_id"`
 	ActivityType string              `json:"activity_type" bson:"activity_type"` // e.g., "follow", "review", "buy"
 	EntityID     *primitive.ObjectID `json:"entity_id,omitempty" bson:"entity_id,omitempty"`
 	EntityType   *string             `json:"entity_type,omitempty" bson:"entity_type,omitempty"` // "event", "place", or null
@@ -200,8 +200,8 @@ type Seat struct {
 
 // UserProfileResponse defines the structure for the user profile response
 type UserSuggest struct {
-	UserID      string `json:"userid" bson:"userid"`
 	Username    string `json:"username" bson:"username"`
+	UserID      string `json:"userid" bson:"userid"`
 	IsFollowing bool
 	Bio         string `json:"bio,omitempty" bson:"bio,omitempty"`
 }
@@ -364,7 +364,7 @@ type Business struct {
 type Booking struct {
 	ID         primitive.ObjectID `json:"id,omitempty" bson:"_id,omitempty"`
 	BusinessID primitive.ObjectID `json:"business_id" bson:"business_id"`
-	UserName   string             `json:"user_name" bson:"user_name"`
+	UserID     string             `json:"user_id" bson:"user_id"`
 	TimeSlot   string             `json:"time_slot" bson:"time_slot"`
 }
 

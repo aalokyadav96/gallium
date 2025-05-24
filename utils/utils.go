@@ -23,8 +23,18 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
+// func CSRF(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+// 	fmt.Fprint(w, GenerateName(8))
+// }
+
 func CSRF(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	fmt.Fprint(w, GenerateName(8))
+	csrf := GenerateName(12)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{
+		"ok":         true,
+		"csrf_token": csrf,
+	})
 }
 
 func GenerateName(n int) string {

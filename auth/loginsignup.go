@@ -6,12 +6,15 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
 
 	"naevis/db"
 	"naevis/middleware"
+	"naevis/mq"
+	"naevis/rdx"
 	"naevis/structs"
 	"naevis/utils"
 
@@ -30,92 +33,6 @@ var (
 	// tokenSigningAlgo = jwt.SigningMethodHS256
 	jwtSecret = []byte("your_secret_key") // Replace with a secure secret key
 )
-
-// func loginHandler(w http.ResponseWriter, r *http.Request) {
-// 	var user structs.User
-// 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
-// 		http.Error(w, "Invalid input", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	// // Check Redis cache for token
-// 	// cachedToken, err := RdxHget("tokki", user.UserID)
-// 	// if err != nil {
-// 	// 	// Handle Redis error if necessary, log it or silently move on
-// 	// 	log.Printf("Error checking token in Redis: %v", err)
-// 	// }
-// 	// if cachedToken != "" {
-// 	// 	// Token found in cache, return it
-// 	// 	sendResponse(w, http.StatusOK, map[string]string{"token": cachedToken, "userid": user.UserID}, "Login successful", nil)
-// 	// 	return
-// 	// }
-
-// 	// Look for the user in MongoDB by username
-// 	var storedUser structs.User
-// 	err := db.UserCollection.FindOne(context.TODO(), bson.M{"username": user.Username}).Decode(&storedUser)
-// 	if err != nil {
-// 		// Return generic error message for security reasons
-// 		http.Error(w, "Invalid username or password", http.StatusUnauthorized)
-// 		return
-// 	}
-
-// 	// Verify password
-// 	if err := bcrypt.CompareHashAndPassword([]byte(storedUser.Password), []byte(user.Password)); err != nil {
-// 		http.Error(w, "Invalid username or password", http.StatusUnauthorized)
-// 		return
-// 	}
-// 	// // In login function, after verifying password
-// 	// // Remove any existing token for this user in Redis
-// 	// _, err = RdxHdel("tokki", storedUser.UserID)
-// 	// if err != nil {
-// 	// 	log.Printf("Error removing existing token from Redis: %v", err)
-// 	// }
-
-// 	// Create JWT claims
-// 	claims := &middleware.Claims{
-// 		Username: storedUser.Username,
-// 		UserID:   storedUser.UserID,
-// 		RegisteredClaims: jwt.RegisteredClaims{
-// 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(12 * time.Hour)), // Adjust expiration as needed
-// 		},
-// 	}
-// 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-// 	tokenString, err := token.SignedString(jwtSecret)
-// 	if err != nil {
-// 		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	refreshToken, err := generateRefreshToken()
-// 	if err != nil {
-// 		http.Error(w, "Error generating refresh token", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	// Hash the refresh token
-// 	hashedRefreshToken := hashToken(refreshToken)
-// 	_, err = db.UserCollection.UpdateOne(
-// 		context.TODO(),
-// 		bson.M{"userid": storedUser.UserID},
-// 		bson.M{"$set": bson.M{"refresh_token": hashedRefreshToken, "refresh_expiry": time.Now().Add(refreshTokenTTL)}},
-// 	)
-// 	if err != nil {
-// 		http.Error(w, "Error storing refresh token", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	// // Cache the token in Redis (only cache if login is successful)
-// 	// err = RdxHset("tokki", claims.UserID, tokenString)
-// 	// if err != nil {
-// 	// 	// Log the Redis caching failure, but allow the login to proceed
-// 	// 	log.Printf("Error caching token in Redis: %v", err)
-// 	// }
-// 	// m := mq.Index{}
-// 	// mq.Emit("user-loggedin", m)
-
-//		// Send response with the token
-//		utils.SendResponse(w, http.StatusOK, map[string]string{"token": tokenString, "refreshToken": refreshToken, "userid": storedUser.UserID}, "Login successful", nil)
-//	}
 
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	var user structs.User
@@ -188,75 +105,6 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	}, "Login successful", nil)
 }
 
-// func registerHandler(w http.ResponseWriter, r *http.Request) {
-// 	var user structs.User
-// 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
-// 		http.Error(w, "Invalid input", http.StatusBadRequest)
-// 		return
-// 	}
-// 	log.Printf("Registering user: %s", user.Username)
-
-// 	// User not found in Redis, check the database
-// 	var existingUser structs.User
-// 	err := db.UserCollection.FindOne(context.TODO(), bson.M{"username": user.Username}).Decode(&existingUser)
-// 	if err == nil {
-// 		// User already exists in database
-// 		log.Printf("User already exists (in DB): %s", user.Username)
-// 		http.Error(w, "User already exists", http.StatusConflict)
-// 		return
-// 	} else if err != mongo.ErrNoDocuments {
-// 		// Handle unexpected error from MongoDB
-// 		log.Printf("Error checking for existing user in DB: %v", err)
-// 		http.Error(w, "Internal server error", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	// _, err = RdxHdel("tokki", user.UserID)
-// 	// if err != nil {
-// 	// 	log.Printf("Error removing existing token from Redis: %v", err)
-// 	// }
-
-// 	// Proceed with password hashing if user does not already exist
-// 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
-// 	if err != nil {
-// 		log.Printf("Failed to hash password for user %s: %v", user.Username, err)
-// 		http.Error(w, "Failed to hash password", http.StatusInternalServerError)
-// 		return
-// 	}
-// 	user.Password = string(hashedPassword)
-// 	user.UserID = "u" + utils.GenerateName(10)
-
-// 	// Insert new user into the database
-// 	_, err = db.UserCollection.InsertOne(context.TODO(), user)
-// 	if err != nil {
-// 		log.Printf("Failed to insert user into DB: %v", err)
-// 		http.Error(w, "Failed to register user", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	// Cache the user information in Redis (optional for fast future access)
-// 	err = rdx.RdxHset("users", user.UserID, user.Username)
-// 	if err != nil {
-// 		log.Printf("Error caching user in Redis: %v", err)
-// 	}
-
-// 	m := mq.Index{EntityType: "user", EntityId: user.UserID, Method: "POST"}
-// 	mq.Emit("user-registered", m)
-
-// 	// go CreatePreferences(w, r, ps)
-
-// 	// initializeUserDefaults(user.UserID)
-// 	profile.CreateFollowEntry(user.UserID)
-
-//		// Respond with success
-//		w.WriteHeader(http.StatusCreated)
-//		response := map[string]any{
-//			"status":  http.StatusCreated,
-//			"message": "User registered successfully",
-//			"data":    user.Username,
-//		}
-//		json.NewEncoder(w).Encode(response)
-//	}
 func registerHandler(w http.ResponseWriter, r *http.Request) {
 	var user structs.User
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
@@ -304,6 +152,11 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 	// 	log.Printf("Failed to cache OTP: %v", err)
 	// }
 
+	err = rdx.RdxSet(fmt.Sprintf("users:%s", user.UserID), user.Username)
+	if err != nil {
+		log.Printf("Failed to cache username: %v", err)
+	}
+
 	// Save user in DB (unverified)
 	_, err = db.UserCollection.InsertOne(context.TODO(), user)
 	if err != nil {
@@ -344,16 +197,16 @@ func logoutUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// // Remove token from Redis cache
-	// _, err = RdxHdel("tokki", claims.UserID)
-	// if err != nil {
-	// 	log.Printf("Error removing token from Redis: %v", err)
-	// 	http.Error(w, "Failed to log out", http.StatusInternalServerError)
-	// 	return
-	// }
+	// Remove token from Redis cache
+	_, err = rdx.RdxHdel("tokki", claims.UserID)
+	if err != nil {
+		log.Printf("Error removing token from Redis: %v", err)
+		http.Error(w, "Failed to log out", http.StatusInternalServerError)
+		return
+	}
 
-	// m := mq.Index{}
-	// mq.Emit("user-loggedout", m)
+	m := mq.Index{}
+	mq.Emit("user-loggedout", m)
 
 	utils.SendResponse(w, http.StatusOK, nil, "User logged out successfully", nil)
 }
@@ -391,11 +244,11 @@ func refreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// // Update the token in Redis
-		// err = RdxHset("tokki", claims.UserID, newTokenString)
-		// if err != nil {
-		// 	log.Printf("Error updating token in Redis: %v", err)
-		// }
+		// Update the token in Redis
+		err = rdx.RdxHset("tokki", claims.UserID, newTokenString)
+		if err != nil {
+			log.Printf("Error updating token in Redis: %v", err)
+		}
 
 		utils.SendResponse(w, http.StatusOK, map[string]string{"token": newTokenString}, "Token refreshed successfully", nil)
 	} else {

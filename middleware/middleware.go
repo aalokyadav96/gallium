@@ -42,7 +42,6 @@ func Authenticate(next httprouter.Handle) httprouter.Handle {
 			return
 		}
 
-		fmt.Println("online:" + claims.UserID)
 		if err := rdx.SetWithExpiry("online:"+claims.UserID, "", 10*time.Second); err != nil {
 			log.Printf("warning: could not set online status for %s: %v", claims.UserID, err)
 		}

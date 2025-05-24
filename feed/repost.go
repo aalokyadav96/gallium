@@ -28,7 +28,7 @@ func Repost(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		return
 	}
 
-	userID, username := claims.UserID, claims.Username
+	userID := claims.UserID
 
 	var req RepostRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -65,8 +65,8 @@ func Repost(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 
 	// Create a new repost entry
 	newRepost := bson.M{
-		"userId":      userID,
-		"username":    username,
+		"userId": userID,
+		// "username":    username,
 		"content":     req.Content,
 		"repostOf":    req.PostID,
 		"repostCount": 0,
