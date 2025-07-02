@@ -77,11 +77,12 @@ func setupRouter(rateLimiter *ratelim.RateLimiter, hub *newchat.Hub) http.Handle
 	routes.AddUtilityRoutes(router, rateLimiter)
 
 	// CORS setup (adjust AllowedOrigins in production)
-	allowedOrigins := []string{"https://zincate.netlify.app"}
+	allowedOrigins := []string{os.Getenv("ALLOWED_ORIGIN")}
 	if os.Getenv("ENV") == "development" {
 		allowedOrigins = []string{"*"}
 	}
 
+	// CORS setup (adjust AllowedOrigins in production)
 	c := cors.New(cors.Options{
 		AllowedOrigins:   allowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
