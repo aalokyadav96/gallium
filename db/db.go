@@ -2,9 +2,11 @@ package db
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"runtime"
+	"time"
 
 	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -12,110 +14,351 @@ import (
 )
 
 var (
-	MapsCollection             *mongo.Collection
-	CommentsCollection         *mongo.Collection
-	RoomsCollection            *mongo.Collection
-	UserCollection             *mongo.Collection
-	LikesCollection            *mongo.Collection
-	ItineraryCollection        *mongo.Collection
-	UserDataCollection         *mongo.Collection
-	TicketsCollection          *mongo.Collection
-	PurchasedTicketsCollection *mongo.Collection
-	ReviewsCollection          *mongo.Collection
-	SettingsCollection         *mongo.Collection
-	FollowingsCollection       *mongo.Collection
-	PlacesCollection           *mongo.Collection
-	SlotCollection             *mongo.Collection
-	BookingsCollection         *mongo.Collection
-	PostsCollection            *mongo.Collection
-	FilesCollection            *mongo.Collection
-	MerchCollection            *mongo.Collection
-	MenuCollection             *mongo.Collection
-	ActivitiesCollection       *mongo.Collection
-	EventsCollection           *mongo.Collection
-	ArtistEventsCollection     *mongo.Collection
-	SongsCollection            *mongo.Collection
-	MediaCollection            *mongo.Collection
-	ArtistsCollection          *mongo.Collection
-	CartoonsCollection         *mongo.Collection
-	ForumsCollection           *mongo.Collection
-	ChatsCollection            *mongo.Collection
-	MessagesCollection         *mongo.Collection
-	ReportsCollection          *mongo.Collection
-	Client                     *mongo.Client
+	Client *mongo.Client
+	// Your collections:
+	AnalyticsCollection         *mongo.Collection
+	MapsCollection              *mongo.Collection
+	CartCollection              *mongo.Collection
+	OrderCollection             *mongo.Collection
+	CatalogueCollection         *mongo.Collection
+	FarmsCollection             *mongo.Collection
+	FarmOrdersCollection        *mongo.Collection
+	CropsCollection             *mongo.Collection
+	CommentsCollection          *mongo.Collection
+	RoomsCollection             *mongo.Collection
+	UserCollection              *mongo.Collection
+	LikesCollection             *mongo.Collection
+	ProductCollection           *mongo.Collection
+	ItineraryCollection         *mongo.Collection
+	UserDataCollection          *mongo.Collection
+	TicketsCollection           *mongo.Collection
+	BehindTheScenesCollection   *mongo.Collection
+	PurchasedTicketsCollection  *mongo.Collection
+	ReviewsCollection           *mongo.Collection
+	SettingsCollection          *mongo.Collection
+	FollowingsCollection        *mongo.Collection
+	PlacesCollection            *mongo.Collection
+	SlotCollection              *mongo.Collection
+	BookingsCollection          *mongo.Collection
+	PostsCollection             *mongo.Collection
+	BlogPostsCollection         *mongo.Collection
+	FilesCollection             *mongo.Collection
+	MerchCollection             *mongo.Collection
+	MenuCollection              *mongo.Collection
+	ActivitiesCollection        *mongo.Collection
+	EventsCollection            *mongo.Collection
+	ArtistEventsCollection      *mongo.Collection
+	SongsCollection             *mongo.Collection
+	MediaCollection             *mongo.Collection
+	ArtistsCollection           *mongo.Collection
+	CartoonsCollection          *mongo.Collection
+	ChatsCollection             *mongo.Collection
+	MessagesCollection          *mongo.Collection
+	QuestionCollection          *mongo.Collection
+	AnswerCollection            *mongo.Collection
+	ReportsCollection           *mongo.Collection
+	RecipeCollection            *mongo.Collection
+	BaitoCollection             *mongo.Collection
+	BaitoApplicationsCollection *mongo.Collection
 )
 
-// Initialize MongoDB connection
+// limiter chan to cap concurrent Mongo ops
+var mongoLimiter = make(chan struct{}, 100) // allow up to 100 concurrent ops
 
-// Initialize MongoDB connection with proper error handling
-func InitMongoDB() error {
-	if err := godotenv.Load(); err != nil {
-		log.Println("Warning: .env file not found, using system environment variables")
+func init() {
+	_ = godotenv.Load()
+
+	uri := os.Getenv("MONGODB_URI")
+	if uri == "" {
+		log.Fatal("❌ MONGODB_URI environment variable not set")
 	}
 
-	mongoURI := os.Getenv("MONGODB_URI")
-	if mongoURI == "" {
-		return fmt.Errorf("❌ MONGODB_URI is not set in environment variables")
-	}
+	clientOpts := options.Client().
+		ApplyURI(uri).
+		SetMaxPoolSize(100).
+		SetMinPoolSize(10).
+		SetRetryWrites(true)
 
-	ClientOptions := options.Client().ApplyURI(mongoURI)
 	var err error
-
-	Client, err = mongo.Connect(context.TODO(), ClientOptions)
+	Client, err = mongo.Connect(context.Background(), clientOpts)
 	if err != nil {
-		return fmt.Errorf("❌ Failed to connect to MongoDB: %v", err)
+		log.Fatalf("❌ Failed to connect to MongoDB: %v", err)
+	}
+	if err := Client.Ping(context.Background(), nil); err != nil {
+		log.Fatalf("❌ Mongo ping failed: %v", err)
 	}
 
-	// Test connection
-	err = Client.Ping(context.TODO(), nil)
-	if err != nil {
-		return fmt.Errorf("❌ MongoDB ping failed: %v", err)
-	}
+	log.Printf("✅ MongoDB connected (%s) maxPool=%d minPool=%d; Goroutines at start: %d",
+		uri, *clientOpts.MaxPoolSize, *clientOpts.MinPoolSize, runtime.NumGoroutine(),
+	)
 
-	// CreateIndexes(Client)
-	MapsCollection = Client.Database("eventdb").Collection("maps")
-	CommentsCollection = Client.Database("eventdb").Collection("comments")
-	RoomsCollection = Client.Database("eventdb").Collection("rooms")
-	SettingsCollection = Client.Database("eventdb").Collection("settings")
-	ReviewsCollection = Client.Database("eventdb").Collection("reviews")
-	FollowingsCollection = Client.Database("eventdb").Collection("followings")
-	LikesCollection = Client.Database("eventdb").Collection("likes")
-	ItineraryCollection = Client.Database("eventdb").Collection("itinerary")
-	UserCollection = Client.Database("eventdb").Collection("users")
-	UserDataCollection = Client.Database("eventdb").Collection("userdata")
-	TicketsCollection = Client.Database("eventdb").Collection("ticks")
-	PurchasedTicketsCollection = Client.Database("eventdb").Collection("purticks")
-	PlacesCollection = Client.Database("eventdb").Collection("places")
-	BookingsCollection = Client.Database("eventdb").Collection("bookings")
-	SlotCollection = Client.Database("eventdb").Collection("slots")
-	PostsCollection = Client.Database("eventdb").Collection("posts")
-	FilesCollection = Client.Database("eventdb").Collection("files")
-	MerchCollection = Client.Database("eventdb").Collection("merch")
-	MenuCollection = Client.Database("eventdb").Collection("menu")
-	ActivitiesCollection = Client.Database("eventdb").Collection("activities")
-	EventsCollection = Client.Database("eventdb").Collection("events")
-	ArtistEventsCollection = Client.Database("eventdb").Collection("artistevents")
-	SongsCollection = Client.Database("eventdb").Collection("songs")
-	MediaCollection = Client.Database("eventdb").Collection("media")
-	ArtistsCollection = Client.Database("eventdb").Collection("artists")
-	CartoonsCollection = Client.Database("eventdb").Collection("cartoons")
-	ChatsCollection = Client.Database("eventdb").Collection("chats")
-	ForumsCollection = Client.Database("eventdb").Collection("forums")
-	MessagesCollection = Client.Database("eventdb").Collection("messages")
-	ReportsCollection = Client.Database("eventdb").Collection("reports")
+	// Graceful shutdown hook
+	go func() {
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt)
+		<-c
+		log.Println("🛑 Disconnecting from MongoDB...")
+		_ = Client.Disconnect(context.Background())
+		os.Exit(0)
+	}()
 
-	log.Println("✅ Successfully connected to MongoDB")
-	return nil
+	// Optional: log connection stats periodically
+	go logPoolStats()
+
+	// Initialize your collections
+	db := Client.Database("eventdb")
+	ActivitiesCollection = db.Collection("activities")
+	AnalyticsCollection = db.Collection("analytics")
+	ArtistEventsCollection = db.Collection("artistevents")
+	ArtistsCollection = db.Collection("artists")
+	BaitoCollection = db.Collection("baito")
+	BaitoApplicationsCollection = db.Collection("baitoapply")
+	BlogPostsCollection = db.Collection("bposts")
+	BookingsCollection = db.Collection("bookings")
+	BehindTheScenesCollection = db.Collection("bts")
+	CartCollection = db.Collection("cart")
+	CartoonsCollection = db.Collection("cartoons")
+	CatalogueCollection = db.Collection("catalogue")
+	ChatsCollection = db.Collection("chats")
+	CommentsCollection = db.Collection("comments")
+	CropsCollection = db.Collection("crops")
+	EventsCollection = db.Collection("events")
+	FarmsCollection = db.Collection("farms")
+	FilesCollection = db.Collection("files")
+	FollowingsCollection = db.Collection("followings")
+	FarmOrdersCollection = db.Collection("forders")
+	ItineraryCollection = db.Collection("itinerary")
+	LikesCollection = db.Collection("likes")
+	MapsCollection = db.Collection("maps")
+	MediaCollection = db.Collection("media")
+	MenuCollection = db.Collection("menu")
+	MerchCollection = db.Collection("merch")
+	MessagesCollection = db.Collection("messages")
+	OrderCollection = db.Collection("orders")
+	PlacesCollection = db.Collection("places")
+	PostsCollection = db.Collection("posts")
+	ProductCollection = db.Collection("products")
+	PurchasedTicketsCollection = db.Collection("purticks")
+	RecipeCollection = db.Collection("recipes")
+	QuestionCollection = db.Collection("questions")
+	AnswerCollection = db.Collection("answers")
+	ReportsCollection = db.Collection("reports")
+	ReviewsCollection = db.Collection("reviews")
+	RoomsCollection = db.Collection("rooms")
+	SettingsCollection = db.Collection("settings")
+	SlotCollection = db.Collection("slots")
+	SongsCollection = db.Collection("songs")
+	TicketsCollection = db.Collection("ticks")
+	UserDataCollection = db.Collection("userdata")
+	UserCollection = db.Collection("users")
 }
 
-// Gracefully close MongoDB connection
-func CloseMongoDB() {
-	if Client != nil {
-		err := Client.Disconnect(context.TODO())
-		if err != nil {
-			log.Printf("❌ Error closing MongoDB connection: %v", err)
-		} else {
-			log.Println("✅ MongoDB connection closed successfully")
+// logPoolStats logs basic goroutine and pool stats every 60s (optional)
+func logPoolStats() {
+	for {
+		time.Sleep(60 * time.Second)
+		log.Printf("📊 Mongo Stats: Goroutines=%d | MongoOpsRunning=%d", runtime.NumGoroutine(), len(mongoLimiter))
+	}
+}
+
+// PingMongo can be used in your /health endpoint
+func PingMongo() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	return Client.Ping(ctx, nil)
+}
+
+// WithMongo wraps any Mongo operation with concurrency and timeout + minimal retry
+func WithMongo(op func(ctx context.Context) error) error {
+	mongoLimiter <- struct{}{}        // acquire slot
+	defer func() { <-mongoLimiter }() // release slot
+
+	var err error
+	for i := 0; i < 2; i++ { // 1 retry max
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		err = op(ctx)
+		if err == nil {
+			return nil
 		}
+		log.Printf("⚠️ Mongo op failed: %v (retry %d)", err, i+1)
+		time.Sleep(200 * time.Millisecond)
 	}
+	return err
 }
+
+// OptionsFindLatest provides a find option with latest sort
+func OptionsFindLatest(limit int64) *options.FindOptions {
+	opts := options.Find()
+	opts.SetSort(map[string]interface{}{"createdAt": -1})
+	opts.SetLimit(limit)
+	return opts
+}
+
+// // db/db.go
+// package db
+
+// import (
+// 	"context"
+// 	"log"
+// 	"os"
+// 	"runtime"
+// 	"time"
+
+// 	"github.com/joho/godotenv"
+// 	"go.mongodb.org/mongo-driver/mongo"
+// 	"go.mongodb.org/mongo-driver/mongo/options"
+// )
+
+// var (
+// 	Client *mongo.Client
+// 	// Your collections:
+// 	MapsCollection              *mongo.Collection
+// 	CartCollection              *mongo.Collection
+// 	OrderCollection             *mongo.Collection
+// 	CatalogueCollection         *mongo.Collection
+// 	FarmsCollection             *mongo.Collection
+// 	FarmOrdersCollection        *mongo.Collection
+// 	CropsCollection             *mongo.Collection
+// 	CommentsCollection          *mongo.Collection
+// 	RoomsCollection             *mongo.Collection
+// 	UserCollection              *mongo.Collection
+// 	LikesCollection             *mongo.Collection
+// 	ProductCollection           *mongo.Collection
+// 	ItineraryCollection         *mongo.Collection
+// 	UserDataCollection          *mongo.Collection
+// 	TicketsCollection           *mongo.Collection
+// 	BehindTheScenesCollection   *mongo.Collection
+// 	PurchasedTicketsCollection  *mongo.Collection
+// 	ReviewsCollection           *mongo.Collection
+// 	SettingsCollection          *mongo.Collection
+// 	FollowingsCollection        *mongo.Collection
+// 	PlacesCollection            *mongo.Collection
+// 	SlotCollection              *mongo.Collection
+// 	BookingsCollection          *mongo.Collection
+// 	PostsCollection             *mongo.Collection
+// 	BlogPostsCollection         *mongo.Collection
+// 	FilesCollection             *mongo.Collection
+// 	MerchCollection             *mongo.Collection
+// 	MenuCollection              *mongo.Collection
+// 	ActivitiesCollection        *mongo.Collection
+// 	EventsCollection            *mongo.Collection
+// 	ArtistEventsCollection      *mongo.Collection
+// 	SongsCollection             *mongo.Collection
+// 	MediaCollection             *mongo.Collection
+// 	ArtistsCollection           *mongo.Collection
+// 	CartoonsCollection          *mongo.Collection
+// 	ChatsCollection             *mongo.Collection
+// 	MessagesCollection          *mongo.Collection
+// 	QuestionCollection          *mongo.Collection
+// 	AnswerCollection            *mongo.Collection
+// 	ReportsCollection           *mongo.Collection
+// 	RecipeCollection            *mongo.Collection
+// 	BaitoCollection             *mongo.Collection
+// 	BaitoApplicationsCollection *mongo.Collection
+// )
+
+// // limiter chan to cap concurrent Mongo ops
+// var mongoLimiter = make(chan struct{}, 100) // allow up to 100 concurrent ops
+
+// func init() {
+// 	// Load .env if present
+// 	_ = godotenv.Load()
+
+// 	uri := os.Getenv("MONGODB_URI")
+// 	if uri == "" {
+// 		log.Fatal("❌ MONGODB_URI environment variable not set")
+// 	}
+
+// 	clientOpts := options.Client().
+// 		ApplyURI(uri).
+// 		SetMaxPoolSize(100).
+// 		SetMinPoolSize(10)
+
+// 	var err error
+// 	Client, err = mongo.Connect(context.Background(), clientOpts)
+// 	if err != nil {
+// 		log.Fatalf("❌ Failed to connect to MongoDB: %v", err)
+// 	}
+// 	// Verify connectivity
+// 	if err := Client.Ping(context.Background(), nil); err != nil {
+// 		log.Fatalf("❌ Mongo ping failed: %v", err)
+// 	}
+
+// 	log.Printf("✅ MongoDB connected (%s) maxPool=%d minPool=%d; Goroutines at start: %d",
+// 		uri, *clientOpts.MaxPoolSize, *clientOpts.MinPoolSize, runtime.NumGoroutine(),
+// 	)
+
+// 	// Initialize your collections
+// 	db := Client.Database("eventdb")
+// 	ActivitiesCollection = db.Collection("activities")
+// 	ArtistEventsCollection = db.Collection("artistevents")
+// 	ArtistsCollection = db.Collection("artists")
+// 	BaitoCollection = db.Collection("baito")
+// 	BaitoApplicationsCollection = db.Collection("baitoapply")
+// 	BlogPostsCollection = db.Collection("bposts")
+// 	BookingsCollection = db.Collection("bookings")
+// 	BehindTheScenesCollection = db.Collection("bts")
+// 	CartCollection = db.Collection("cart")
+// 	CartoonsCollection = db.Collection("cartoons")
+// 	CatalogueCollection = db.Collection("catalogue")
+// 	ChatsCollection = db.Collection("chats")
+// 	CommentsCollection = db.Collection("comments")
+// 	CropsCollection = db.Collection("crops")
+// 	EventsCollection = db.Collection("events")
+// 	FarmsCollection = db.Collection("farms")
+// 	FilesCollection = db.Collection("files")
+// 	FollowingsCollection = db.Collection("followings")
+// 	FarmOrdersCollection = db.Collection("forders")
+// 	ItineraryCollection = db.Collection("itinerary")
+// 	LikesCollection = db.Collection("likes")
+// 	MapsCollection = db.Collection("maps")
+// 	MediaCollection = db.Collection("media")
+// 	MenuCollection = db.Collection("menu")
+// 	MerchCollection = db.Collection("merch")
+// 	MessagesCollection = db.Collection("messages")
+// 	OrderCollection = db.Collection("orders")
+// 	PlacesCollection = db.Collection("places")
+// 	PostsCollection = db.Collection("posts")
+// 	ProductCollection = db.Collection("products")
+// 	PurchasedTicketsCollection = db.Collection("purticks")
+// 	RecipeCollection = db.Collection("recipes")
+// 	QuestionCollection = db.Collection("questions")
+// 	AnswerCollection = db.Collection("answers")
+// 	ReportsCollection = db.Collection("reports")
+// 	ReviewsCollection = db.Collection("reviews")
+// 	RoomsCollection = db.Collection("rooms")
+// 	SettingsCollection = db.Collection("settings")
+// 	SlotCollection = db.Collection("slots")
+// 	SongsCollection = db.Collection("songs")
+// 	TicketsCollection = db.Collection("ticks")
+// 	UserDataCollection = db.Collection("userdata")
+// 	UserCollection = db.Collection("users")
+// }
+
+// // PingMongo can be used in your /health endpoint
+// func PingMongo() error {
+// 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+// 	defer cancel()
+// 	return Client.Ping(ctx, nil)
+// }
+
+// // WithMongo wraps any Mongo operation with a concurrency limiter and timeout
+// func WithMongo(op func(ctx context.Context) error) error {
+// 	mongoLimiter <- struct{}{}        // acquire slot
+// 	defer func() { <-mongoLimiter }() // release slot
+
+// 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+// 	defer cancel()
+
+// 	return op(ctx)
+// }
+
+// // OptionsFindLatest is unchanged
+// func OptionsFindLatest(limit int64) *options.FindOptions {
+// 	opts := options.Find()
+// 	opts.SetSort(map[string]interface{}{"createdAt": -1})
+// 	opts.SetLimit(limit)
+// 	return opts
+// }

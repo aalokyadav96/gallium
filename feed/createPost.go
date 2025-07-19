@@ -39,7 +39,7 @@ func CreateTweetPost(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 	postText := r.FormValue("text")
 
 	// Validate post type
-	validPostTypes := map[string]bool{"text": true, "image": true, "video": true, "blog": true, "merchandise": true}
+	validPostTypes := map[string]bool{"text": true, "image": true, "video": true, "audio": true, "blog": true, "merchandise": true}
 	if !validPostTypes[postType] {
 		http.Error(w, "Invalid post type", http.StatusBadRequest)
 		return
@@ -81,6 +81,16 @@ func CreateTweetPost(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 		mediaRes, mediaPaths, mediaNames, err = saveUploadedVideoFile(r, "videos", newPost.PostID, newPost.UserID)
 		if err != nil {
 			http.Error(w, "Failed to upload videos: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if len(mediaPaths) == 0 && len(mediaNames) == 0 {
+			http.Error(w, "No media uploaded", http.StatusBadRequest)
+			return
+		}
+	case "audio":
+		mediaRes, mediaPaths, mediaNames, err = saveUploadedAudioFile(r, "audios", newPost.PostID, newPost.UserID)
+		if err != nil {
+			http.Error(w, "Failed to upload audios: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 		if len(mediaPaths) == 0 && len(mediaNames) == 0 {

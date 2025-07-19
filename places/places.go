@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
@@ -180,17 +181,23 @@ func handleBannerUpload(w http.ResponseWriter, r *http.Request, placeID string) 
 	return fmt.Sprintf("%s.jpg", placeID), nil
 }
 
-// Parses and validates form data for places
+// // Parses and validates form data for places
+
 func parsePlaceFormData(_ http.ResponseWriter, r *http.Request) (structs.Place, error) {
 	err := r.ParseMultipartForm(10 << 20) // 10MB limit
 	if err != nil {
 		return structs.Place{}, fmt.Errorf("unable to parse form")
 	}
 
-	name, address, description, category, capacityStr := r.FormValue("name"), r.FormValue("address"), r.FormValue("description"), r.FormValue("category"), r.FormValue("capacity")
+	// Required fields
+	name := strings.TrimSpace(r.FormValue("name"))
+	address := strings.TrimSpace(r.FormValue("address"))
+	description := strings.TrimSpace(r.FormValue("description"))
+	category := strings.TrimSpace(r.FormValue("category"))
+	capacityStr := strings.TrimSpace(r.FormValue("capacity"))
 
 	if name == "" || address == "" || description == "" || category == "" || capacityStr == "" {
-		return structs.Place{}, fmt.Errorf("all fields are required")
+		return structs.Place{}, fmt.Errorf("all required fields must be filled")
 	}
 
 	capacity, err := strconv.Atoi(capacityStr)
@@ -198,17 +205,68 @@ func parsePlaceFormData(_ http.ResponseWriter, r *http.Request) (structs.Place, 
 		return structs.Place{}, fmt.Errorf("capacity must be a positive integer")
 	}
 
+	// Optional fields
+	city := strings.TrimSpace(r.FormValue("city"))
+	country := strings.TrimSpace(r.FormValue("country"))
+	zipcode := strings.TrimSpace(r.FormValue("zipCode"))
+	phone := strings.TrimSpace(r.FormValue("phone"))
+
+	// Banner handling (optional)
+	var bannerFilename string
+	file, handler, err := r.FormFile("banner")
+	if err == nil && file != nil {
+		defer file.Close()
+		// Save or process the file here, for now we just read filename
+		bannerFilename = handler.Filename
+		// Actual storage logic goes here...
+	}
+
 	return structs.Place{
+		PlaceID:     utils.GenerateID(14),
 		Name:        name,
 		Address:     address,
 		Description: description,
 		Category:    category,
 		Capacity:    capacity,
-		PlaceID:     utils.GenerateID(14),
+		Banner:      bannerFilename,
+		Phone:       phone,
+		City:        city,
+		Country:     country,
+		ZipCode:     zipcode,
 		CreatedAt:   time.Now(),
 		ReviewCount: 0,
+		Status:      "active",
 	}, nil
 }
+
+// func parsePlaceFormData(_ http.ResponseWriter, r *http.Request) (structs.Place, error) {
+// 	err := r.ParseMultipartForm(10 << 20) // 10MB limit
+// 	if err != nil {
+// 		return structs.Place{}, fmt.Errorf("unable to parse form")
+// 	}
+
+// 	name, address, description, category, capacityStr := r.FormValue("name"), r.FormValue("address"), r.FormValue("description"), r.FormValue("category"), r.FormValue("capacity")
+
+// 	if name == "" || address == "" || description == "" || category == "" || capacityStr == "" {
+// 		return structs.Place{}, fmt.Errorf("all fields are required")
+// 	}
+
+// 	capacity, err := strconv.Atoi(capacityStr)
+// 	if err != nil || capacity <= 0 {
+// 		return structs.Place{}, fmt.Errorf("capacity must be a positive integer")
+// 	}
+
+// 	return structs.Place{
+// 		Name:        name,
+// 		Address:     address,
+// 		Description: description,
+// 		Category:    category,
+// 		Capacity:    capacity,
+// 		PlaceID:     utils.GenerateID(14),
+// 		CreatedAt:   time.Now(),
+// 		ReviewCount: 0,
+// 	}, nil
+// }
 
 // Sends a JSON response
 func respondWithJSON(w http.ResponseWriter, statusCode int, data interface{}) {

@@ -87,7 +87,7 @@ func AddReview(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-
+	log.Println("dfdj")
 	var err error
 
 	entityType := ps.ByName("entityType")

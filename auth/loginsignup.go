@@ -64,10 +64,12 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	claims := &middleware.Claims{
 		Username: storedUser.Username,
 		UserID:   storedUser.UserID,
+		Role:     storedUser.Role, // assumes Role []string exists in your structs.User
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(12 * time.Hour)),
 		},
 	}
+
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err := token.SignedString(jwtSecret)
 	if err != nil {
@@ -136,6 +138,7 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 	user.UserID = "u" + utils.GenerateName(10)
 	// user.EmailVerified = false
 	user.EmailVerified = true
+	user.Role = []string{"user"}
 
 	// // Generate OTP and send email
 	// otp := generateOTP(6)

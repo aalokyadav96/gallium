@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"naevis/initdb"
+	"naevis/globals"
 	"naevis/models"
 	"strconv"
 	"strings"
@@ -86,7 +86,7 @@ func ExtractHashtags(text string) []string {
 // For hashtags, we use "hashtag:<token>".
 func AddToIndex(indexKey, entityID string, createdAt time.Time) error {
 	score := float64(createdAt.UnixNano())
-	return initdb.RedisClient.ZAdd(ctx, indexKey, redis.Z{
+	return globals.RedisClient.ZAdd(ctx, indexKey, redis.Z{
 		Score:  score,
 		Member: entityID,
 	}).Err()
@@ -94,13 +94,13 @@ func AddToIndex(indexKey, entityID string, createdAt time.Time) error {
 
 // DeleteFromIndex removes an entity from a Redis sorted set using the given key.
 func DeleteFromIndex(indexKey, entityID string) error {
-	return initdb.RedisClient.ZRem(ctx, indexKey, entityID).Err()
+	return globals.RedisClient.ZRem(ctx, indexKey, entityID).Err()
 }
 
 // GetIndex returns all members (with scores) from a Redis sorted set.
 func GetIndex(indexKey string) ([]redis.Z, error) {
 	// Retrieve all elements in descending order (newest first).
-	return initdb.RedisClient.ZRevRangeWithScores(ctx, indexKey, 0, -1).Result()
+	return globals.RedisClient.ZRevRangeWithScores(ctx, indexKey, 0, -1).Result()
 }
 
 // CacheSearchResult stores search results (as JSON) with an expiration.
@@ -109,12 +109,12 @@ func CacheSearchResult(key string, result []string) error {
 	if err != nil {
 		return err
 	}
-	return initdb.RedisClient.Set(ctx, key, data, time.Hour).Err()
+	return globals.RedisClient.Set(ctx, key, data, time.Hour).Err()
 }
 
 // GetCachedSearchResult retrieves a cached search result.
 func GetCachedSearchResult(key string) ([]string, error) {
-	data, err := initdb.RedisClient.Get(ctx, key).Result()
+	data, err := globals.RedisClient.Get(ctx, key).Result()
 	if err != nil {
 		return nil, err
 	}
@@ -220,7 +220,7 @@ func parseTime(value any) time.Time {
 
 // SaveEntityToDB saves the provided Entity into a dedicated search collection.
 func SaveEntityToDB(entity Entity) error {
-	collection := initdb.MongoClient.Database("naevis").Collection("search")
+	collection := globals.MongoClient.Database("naevis").Collection("search")
 	filter := bson.M{"_id": entity.ID}
 	update := bson.M{"$set": entity}
 	opts := options.Update().SetUpsert(true)
@@ -233,7 +233,7 @@ func SaveEntityToDB(entity Entity) error {
 
 // FetchEntityFromSearchDB attempts to retrieve an Entity from the search collection.
 func FetchEntityFromSearchDB(id string) Entity {
-	collection := initdb.MongoClient.Database("naevis").Collection("search")
+	collection := globals.MongoClient.Database("naevis").Collection("search")
 	filter := bson.M{"_id": id}
 	var entity Entity
 	err := collection.FindOne(ctx, filter).Decode(&entity)

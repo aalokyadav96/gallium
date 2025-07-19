@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"naevis/initdb"
+	"naevis/globals"
 	"strings"
 	"time"
 )
@@ -30,7 +30,7 @@ func (t *TrieNode) AddWord(word string) error {
 // SaveAutocompleteWord stores an autocomplete word in Redis.
 func SaveAutocompleteWord(word string) error {
 	key := fmt.Sprintf("autocomplete:%s", word)
-	return initdb.RedisClient.Set(ctx, key, 1, 0).Err() // No expiration, acts as a unique set.
+	return globals.RedisClient.Set(ctx, key, 1, 0).Err() // No expiration, acts as a unique set.
 }
 
 // GetWordsWithPrefix fetches autocomplete suggestions from Redis.
@@ -44,7 +44,7 @@ func GetWordsWithPrefix(prefix string) ([]string, error) {
 	}
 
 	// Use Redis SCAN command to find matching keys.
-	iter := initdb.RedisClient.Scan(ctx, 0, fmt.Sprintf("autocomplete:%s*", prefix), 100).Iterator()
+	iter := globals.RedisClient.Scan(ctx, 0, fmt.Sprintf("autocomplete:%s*", prefix), 100).Iterator()
 	var results []string
 	for iter.Next(ctx) {
 		results = append(results, strings.TrimPrefix(iter.Val(), "autocomplete:"))
@@ -70,12 +70,12 @@ func CacheAutocompleteResults(key string, results []string) error {
 	if err != nil {
 		return err
 	}
-	return initdb.RedisClient.Set(ctx, key, data, time.Hour).Err()
+	return globals.RedisClient.Set(ctx, key, data, time.Hour).Err()
 }
 
 // GetCachedAutocompleteResults retrieves cached autocomplete suggestions.
 func GetCachedAutocompleteResults(key string) ([]string, error) {
-	data, err := initdb.RedisClient.Get(ctx, key).Result()
+	data, err := globals.RedisClient.Get(ctx, key).Result()
 	if err != nil {
 		return nil, err
 	}

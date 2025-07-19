@@ -84,6 +84,7 @@ type MenuPurchaseRequest struct {
 // MenuPurchaseResponse represents the response body for menu purchase confirmation
 type MenuPurchaseResponse struct {
 	Message string `json:"message"`
+	Success bool   `json:"success"`
 }
 
 // ProcessMenuPayment simulates the payment processing logic
@@ -185,6 +186,7 @@ func buyxMenu(w http.ResponseWriter, request MenuPurchaseRequest, requestingUser
 	// Respond with a success message
 	response := MenuPurchaseResponse{
 		Message: "Payment successfully processed. Menu purchased.",
+		Success: true,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

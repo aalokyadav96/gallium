@@ -5,14 +5,14 @@ import (
 	"log"
 	"net/http"
 
-	"naevis/initdb"
+	"naevis/globals"
 	"naevis/models"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-var ctx = initdb.CTX
+var ctx = globals.CTX
 
 // GetResultsByTypeHandler handles requests to /{ENTITY_TYPE}?query=QUERY
 func GetResultsByTypeHandler(w http.ResponseWriter, r *http.Request, entityType string, query string) {
@@ -112,7 +112,7 @@ func GetResultsOfType(entityType string, query string) interface{} {
 
 // FetchAndDecode retrieves a document from MongoDB and decodes it into the provided output struct.
 func FetchAndDecode(collectionName string, filter bson.M, out interface{}) error {
-	collection := initdb.MongoClient.Database("eventdb").Collection(collectionName)
+	collection := globals.MongoClient.Database("eventdb").Collection(collectionName)
 	projection, exists := Projections[collectionName]
 	if !exists {
 		projection = bson.M{}

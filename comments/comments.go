@@ -78,6 +78,26 @@ func GetComments(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	utils.RespondWithJSON(w, http.StatusOK, comments)
 }
 
+func GetComment(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	commentID := ps.ByName("entitytype")
+
+	filter := bson.M{"_id": commentID}
+	cursor, err := db.CommentsCollection.Find(context.TODO(), filter)
+	if err != nil {
+		http.Error(w, "DB find failed", http.StatusInternalServerError)
+		return
+	}
+	defer cursor.Close(context.TODO())
+
+	var comment models.Comment
+	if err := cursor.All(context.TODO(), &comment); err != nil {
+		http.Error(w, "Cursor decode failed", http.StatusInternalServerError)
+		return
+	}
+
+	utils.RespondWithJSON(w, http.StatusOK, comment)
+}
+
 func UpdateComment(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	commentID := ps.ByName("commentid")
 

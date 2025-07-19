@@ -6,6 +6,7 @@ import (
 	"log"
 	"naevis/db"
 	"naevis/middleware"
+	"naevis/models"
 	"naevis/mq"
 	"naevis/structs"
 	"naevis/userdata"
@@ -18,24 +19,11 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
-// ArtistEvent Struct
-type ArtistEvent struct {
-	EventID   string `bson:"eventid,omitempty" json:"eventid"`
-	ArtistID  string `bson:"artistid" json:"artistid"`
-	Title     string `bson:"title" json:"title"`
-	Date      string `bson:"date" json:"date"`
-	Venue     string `bson:"venue" json:"venue"`
-	City      string `bson:"city" json:"city"`
-	Country   string `bson:"country" json:"country"`
-	CreatorID string `bson:"creatorid" json:"creatorid"`
-	TicketURL string `bson:"ticket_url,omitempty" json:"ticketUrl,omitempty"`
-}
-
 // Get Artist Events
 func GetArtistEvents(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	artistID := ps.ByName("id")
 
-	var artistevents []ArtistEvent
+	var artistevents []models.ArtistEvent
 	cursor, err := db.ArtistEventsCollection.Find(context.TODO(), bson.M{"artistid": artistID})
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, "Database error")
@@ -49,7 +37,7 @@ func GetArtistEvents(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 	}
 
 	if artistevents == nil {
-		artistevents = []ArtistEvent{}
+		artistevents = []models.ArtistEvent{}
 	}
 
 	utils.RespondWithJSON(w, http.StatusOK, artistevents)
@@ -57,7 +45,7 @@ func GetArtistEvents(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 
 // Create Artist Event
 func CreateArtistEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	var artistevent ArtistEvent
+	var artistevent models.ArtistEvent
 	if err := json.NewDecoder(r.Body).Decode(&artistevent); err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "Invalid request payload")
 		return
@@ -120,7 +108,7 @@ func DeleteArtistEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "ArtistEvent deleted successfully"})
 }
 
-func addEventToDB(artistEvent ArtistEvent) (string, error) {
+func addEventToDB(artistEvent models.ArtistEvent) (string, error) {
 	var event structs.Event
 
 	// dateString := "2025-04-29 10:00:00"
@@ -158,4 +146,72 @@ func addEventToDB(artistEvent ArtistEvent) (string, error) {
 		EntityType: "event", EntityId: event.EventID, Method: "POST",
 	})
 	return "", err
+}
+
+func AddArtistToEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	type RequestPayload struct {
+		EventID  string `json:"eventid"`
+		ArtistID string `json:"artistid"`
+	}
+
+	var payload RequestPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+
+	// Get artist ID from URL parameter if passed
+	payload.ArtistID = ps.ByName("id")
+
+	// Fetch event details from EventsCollection
+	var event structs.Event
+	err := db.EventsCollection.FindOne(context.TODO(), bson.M{"eventid": payload.EventID}).Decode(&event)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusNotFound, "Event not found")
+		return
+	}
+
+	// Check if ArtistEvent already exists
+	filter := bson.M{"eventid": payload.EventID, "artistid": payload.ArtistID}
+	count, err := db.ArtistEventsCollection.CountDocuments(context.TODO(), filter)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Error checking for existing artist event")
+		return
+	}
+	if count > 0 {
+		utils.RespondWithError(w, http.StatusConflict, "Artist already added to this event")
+		return
+	}
+
+	// Create a new ArtistEvent object
+	artistEvent := models.ArtistEvent{
+		EventID:   event.EventID,
+		ArtistID:  payload.ArtistID,
+		Title:     event.Title,
+		Date:      event.Date.Format("2006-01-02"),
+		Venue:     event.PlaceName,
+		City:      "", // optional: extract from event.Location
+		Country:   "", // optional: extract from event.Location
+		CreatorID: event.CreatorID,
+		TicketURL: event.WebsiteURL,
+	}
+
+	// Insert into ArtistEventsCollection
+	_, err = db.ArtistEventsCollection.InsertOne(context.TODO(), artistEvent)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to add artist to artist events")
+		return
+	}
+
+	// Add artist ID to Event's Artists array
+	update := bson.M{
+		"$addToSet": bson.M{"artists": payload.ArtistID},
+	}
+	_, err = db.EventsCollection.UpdateOne(context.TODO(), bson.M{"eventid": payload.EventID}, update)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to update event with artist")
+		return
+	}
+
+	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "Artist successfully added to event"})
 }

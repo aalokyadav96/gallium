@@ -51,7 +51,7 @@ func LogActivities(w http.ResponseWriter, r *http.Request, _ httprouter.Params) 
 
 	// Add metadata to each activity
 	for i := range activities {
-		activities[i].Username = claims.Username
+		activities[i].UserID = claims.UserID
 		activities[i].Timestamp = time.Now()
 	}
 
@@ -101,7 +101,7 @@ func GetActivityFeed(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 		return
 	}
 
-	cursor, err := db.ActivitiesCollection.Find(context.TODO(), bson.M{"username": claims.Username})
+	cursor, err := db.ActivitiesCollection.Find(context.TODO(), bson.M{"userid": claims.UserID})
 	if err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to fetch activities")
 		return
@@ -173,13 +173,13 @@ func SubscribeToActivityEvents() {
 func ProcessActivityForRecommendations(activity structs.Activity) {
 	// Example: Check if activity is a ticket purchase
 	if activity.Action == "purchase" {
-		log.Println("Processing purchase recommendation for:", activity.Username)
+		log.Println("Processing purchase recommendation for:", activity.UserID)
 		// Add logic to recommend related events or products
 	}
 
 	// Example: If activity is an event creation, recommend it to interested users
 	if activity.Action == "event_created" {
-		log.Println("Processing event recommendation for:", activity.Username)
+		log.Println("Processing event recommendation for:", activity.UserID)
 		// Add logic to push event to users with similar interests
 	}
 

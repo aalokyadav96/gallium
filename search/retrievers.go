@@ -3,7 +3,7 @@ package search
 import (
 	"fmt"
 	"log"
-	"naevis/initdb"
+	"naevis/globals"
 	"sort"
 	"strings"
 )
@@ -39,8 +39,8 @@ func Search(query string) ([]string, error) {
 	// Optional: sort by recency based on the first token.
 	if len(tokens) > 0 {
 		sort.Slice(results, func(i, j int) bool {
-			z1, err1 := initdb.RedisClient.ZScore(ctx, fmt.Sprintf("inverted:%s", tokens[0]), results[i]).Result()
-			z2, err2 := initdb.RedisClient.ZScore(ctx, fmt.Sprintf("inverted:%s", tokens[0]), results[j]).Result()
+			z1, err1 := globals.RedisClient.ZScore(ctx, fmt.Sprintf("inverted:%s", tokens[0]), results[i]).Result()
+			z2, err2 := globals.RedisClient.ZScore(ctx, fmt.Sprintf("inverted:%s", tokens[0]), results[j]).Result()
 			if err1 != nil || err2 != nil {
 				return results[i] < results[j]
 			}
@@ -95,8 +95,8 @@ func SearchWithHashtagBoost(query string) ([]string, error) {
 			return freqMap[sortedResults[i]] > freqMap[sortedResults[j]]
 		}
 		if len(tokens) > 0 {
-			z1, err1 := initdb.RedisClient.ZScore(ctx, fmt.Sprintf("inverted:%s", tokens[0]), sortedResults[i]).Result()
-			z2, err2 := initdb.RedisClient.ZScore(ctx, fmt.Sprintf("inverted:%s", tokens[0]), sortedResults[j]).Result()
+			z1, err1 := globals.RedisClient.ZScore(ctx, fmt.Sprintf("inverted:%s", tokens[0]), sortedResults[i]).Result()
+			z2, err2 := globals.RedisClient.ZScore(ctx, fmt.Sprintf("inverted:%s", tokens[0]), sortedResults[j]).Result()
 			if err1 != nil || err2 != nil {
 				return sortedResults[i] < sortedResults[j]
 			}

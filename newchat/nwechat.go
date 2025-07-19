@@ -56,7 +56,12 @@ type Hub struct {
 	unregister chan *Client
 	broadcast  chan broadcastMsg
 	mu         sync.Mutex
+	stopped    bool
 }
+
+// func (h *Hub) Stop() {
+// 	panic("unimplemented")
+// }
 
 func NewHub() *Hub {
 	return &Hub{
@@ -67,11 +72,53 @@ func NewHub() *Hub {
 	}
 }
 
+// func (h *Hub) Run() {
+// 	for {
+// 		select {
+// 		case c := <-h.register:
+// 			h.mu.Lock()
+// 			if h.rooms[c.Room] == nil {
+// 				h.rooms[c.Room] = make(map[*Client]bool)
+// 			}
+// 			h.rooms[c.Room][c] = true
+// 			h.mu.Unlock()
+
+// 		case c := <-h.unregister:
+// 			h.mu.Lock()
+// 			if conns := h.rooms[c.Room]; conns != nil {
+// 				delete(conns, c)
+// 				close(c.Send)
+// 			}
+// 			h.mu.Unlock()
+
+// 		case m := <-h.broadcast:
+// 			h.mu.Lock()
+// 			if conns := h.rooms[m.Room]; conns != nil {
+// 				for client := range conns {
+// 					select {
+// 					case client.Send <- m.Data:
+// 					default:
+// 						close(client.Send)
+// 						delete(conns, client)
+// 					}
+// 				}
+// 			}
+// 			h.mu.Unlock()
+// 		}
+// 	}
+// }
+
+// Run keeps the Hub running to process client activity
 func (h *Hub) Run() {
 	for {
 		select {
 		case c := <-h.register:
 			h.mu.Lock()
+			if h.stopped {
+				h.mu.Unlock()
+				c.Conn.Close()
+				continue
+			}
 			if h.rooms[c.Room] == nil {
 				h.rooms[c.Room] = make(map[*Client]bool)
 			}
@@ -80,27 +127,62 @@ func (h *Hub) Run() {
 
 		case c := <-h.unregister:
 			h.mu.Lock()
-			if conns := h.rooms[c.Room]; conns != nil {
-				delete(conns, c)
-				close(c.Send)
+			if clients := h.rooms[c.Room]; clients != nil {
+				if _, ok := clients[c]; ok {
+					delete(clients, c)
+					closeChanSafe(c.Send)
+				}
 			}
 			h.mu.Unlock()
 
 		case m := <-h.broadcast:
 			h.mu.Lock()
-			if conns := h.rooms[m.Room]; conns != nil {
-				for client := range conns {
+			if clients := h.rooms[m.Room]; clients != nil {
+				for client := range clients {
 					select {
 					case client.Send <- m.Data:
 					default:
-						close(client.Send)
-						delete(conns, client)
+						closeChanSafe(client.Send)
+						delete(clients, client)
 					}
 				}
 			}
 			h.mu.Unlock()
 		}
 	}
+}
+
+// Stop gracefully shuts down the Hub, closing all client connections
+func (h *Hub) Stop() {
+	h.mu.Lock()
+	if h.stopped {
+		h.mu.Unlock()
+		return
+	}
+	h.stopped = true
+
+	for room, clients := range h.rooms {
+		for client := range clients {
+			// Best effort to notify clients
+			_ = client.Conn.WriteMessage(websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.CloseNormalClosure, "server shutting down"))
+
+			client.Conn.Close()
+			closeChanSafe(client.Send)
+		}
+		delete(h.rooms, room)
+	}
+	h.mu.Unlock()
+
+	log.Println("✅ Hub stopped cleanly")
+}
+
+// closeChanSafe closes a channel if not already closed (panic-safe)
+func closeChanSafe(ch chan []byte) {
+	defer func() {
+		_ = recover() // avoid panic on double-close
+	}()
+	close(ch)
 }
 
 var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}

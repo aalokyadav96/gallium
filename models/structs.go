@@ -59,32 +59,6 @@ type Result struct {
 	Link        string    `json:"link,omitempty"`
 }
 
-// type Report struct {
-// 	ID         primitive.ObjectID `bson:"_id,omitempty"`
-// 	ReportedBy string             `bson:"reportedBy"`
-// 	TargetID   string             `bson:"targetId"`   // postId, commentId, userId etc.
-// 	TargetType string             `bson:"targetType"` // "post", "comment", "user", "media", etc.
-// 	Reason     string             `bson:"reason"`
-// 	Notes      string             `bson:"notes,omitempty"`
-// 	Status     string             `bson:"status"` // "pending", "resolved", "ignored"
-// 	CreatedAt  time.Time          `bson:"createdAt"`
-// 	UpdatedAt  time.Time          `bson:"updatedAt"`
-// }
-
-type Report struct {
-	ID          primitive.ObjectID `bson:"_id,omitempty"       json:"id"`
-	ReportedBy  string             `bson:"reportedBy"          json:"reportedBy"`
-	TargetID    string             `bson:"targetId"            json:"targetId"`
-	TargetType  string             `bson:"targetType"          json:"targetType"`
-	Reason      string             `bson:"reason"              json:"reason"`
-	Notes       string             `bson:"notes,omitempty"     json:"notes,omitempty"`         // user’s optional notes
-	Status      string             `bson:"status"              json:"status"`                  // e.g. "pending", "reviewed", "resolved"
-	ReviewedBy  string             `bson:"reviewedBy,omitempty" json:"reviewedBy,omitempty"`   // moderator ID
-	ReviewNotes string             `bson:"reviewNotes,omitempty" json:"reviewNotes,omitempty"` // moderator’s notes
-	CreatedAt   time.Time          `bson:"createdAt"           json:"createdAt"`
-	UpdatedAt   time.Time          `bson:"updatedAt"           json:"updatedAt"`
-}
-
 type Message struct {
 	ID        primitive.ObjectID `bson:"_id,omitempty" json:"_id"`
 	ChatID    string             `bson:"chatID" json:"chatID"`
@@ -123,4 +97,16 @@ type Like struct {
 	EntityType string             `bson:"entity_type"` // e.g. "post"
 	EntityID   string             `bson:"entity_id"`   // e.g. post ID
 	CreatedAt  time.Time          `bson:"created_at"`
+}
+type Post struct {
+	ID          primitive.ObjectID `bson:"_id,omitempty" json:"_id"`
+	Title       string             `bson:"title" json:"title"`
+	Content     string             `bson:"content" json:"content"`
+	Category    string             `bson:"category" json:"category"`
+	Subcategory string             `bson:"subcategory" json:"subcategory"`
+	ImagePaths  []string           `bson:"imagePaths" json:"imagePaths"`
+	ReferenceID *string            `bson:"referenceId,omitempty" json:"referenceId,omitempty"`
+	CreatedBy   string             `bson:"createdBy" json:"createdBy"`
+	CreatedAt   time.Time          `bson:"createdAt" json:"createdAt"`
+	UpdatedAt   time.Time          `bson:"updatedAt" json:"updatedAt"`
 }

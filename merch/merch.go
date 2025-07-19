@@ -173,6 +173,22 @@ func GetMerch(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	json.NewEncoder(w).Encode(merch)
 }
 
+func GetMerchPage(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	merchID := ps.ByName("entityType")
+
+	var merch structs.Merch
+	err := db.MerchCollection.FindOne(context.TODO(), bson.M{"merchid": merchID}).Decode(&merch)
+	if err != nil {
+		// http.Error(w, fmt.Sprintf("Merchandise not found: %v", err), http.StatusNotFound)
+		utils.RespondWithJSON(w, 404, "")
+		return
+	}
+
+	// Respond with merch data
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(merch)
+}
+
 // Fetch a list of merchandise items
 func GetMerchs(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	eventID := ps.ByName("eventid")
