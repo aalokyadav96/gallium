@@ -124,7 +124,7 @@ func main() {
 
 	// apply middleware: CORS → security headers → logging → router
 	corsHandler := cors.New(cors.Options{
-		AllowedOrigins:   []string{"*"}, // lock down in production
+		AllowedOrigins:   []string{"https://indium.netlify.app", "https://gallium.netlify.app", "https://farmium.netlify.app"}, // lock down in production
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Content-Type", "Authorization"},
 		AllowCredentials: true,
