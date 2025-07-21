@@ -83,6 +83,8 @@ func AddBaitoRoutes(router *httprouter.Router) {
 	// part timer
 	router.POST("/api/v1/baitos/baito/:id/apply", middleware.Authenticate(baito.ApplyToBaito))
 	router.GET("/api/v1/baitos/applications", middleware.Authenticate(baito.GetMyApplications))
+
+	router.POST("/api/v1/baitos/profile", middleware.Authenticate(baito.CreateBaitoUserProfile))
 }
 
 func AddBeatRoutes(router *httprouter.Router) {

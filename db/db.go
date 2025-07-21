@@ -60,6 +60,7 @@ var (
 	RecipeCollection            *mongo.Collection
 	BaitoCollection             *mongo.Collection
 	BaitoApplicationsCollection *mongo.Collection
+	BaitoWorkerCollection       *mongo.Collection
 )
 
 // limiter chan to cap concurrent Mongo ops
@@ -113,6 +114,7 @@ func init() {
 	ArtistsCollection = db.Collection("artists")
 	BaitoCollection = db.Collection("baito")
 	BaitoApplicationsCollection = db.Collection("baitoapply")
+	BaitoWorkerCollection = db.Collection("baitoworkers")
 	BlogPostsCollection = db.Collection("bposts")
 	BookingsCollection = db.Collection("bookings")
 	BehindTheScenesCollection = db.Collection("bts")

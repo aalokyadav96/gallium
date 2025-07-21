@@ -31,3 +31,16 @@ type BaitoApplication struct {
 	Pitch       string             `bson:"pitch" json:"pitch"`
 	SubmittedAt time.Time          `bson:"submittedAt" json:"submittedAt"`
 }
+
+type BaitoUserProfile struct {
+	UserID      string    `json:"userid" bson:"userid"`
+	BaitoUserID string    `json:"baito_user_id" bson:"baito_user_id"`
+	Name        string    `json:"name" bson:"name"`
+	Age         int       `json:"age" bson:"age"`
+	Phone       string    `json:"phone_number" bson:"phone_number"`
+	Location    string    `json:"address" bson:"address"`
+	Preferred   string    `json:"preferred_roles" bson:"preferred_roles"`
+	Bio         string    `json:"bio" bson:"bio"`
+	ProfilePic  string    `json:"profile_picture" bson:"profile_picture"`
+	CreatedAt   time.Time `json:"created_at" bson:"created_at"`
+}
