@@ -12,6 +12,7 @@ type User struct {
 	Username       string    `json:"username" bson:"username"`
 	Email          string    `json:"email" bson:"email"`
 	Password       string    `json:"-" bson:"password"`
+	PasswordHash   string    `json:"password_hash" bson:"password_hash"`
 	Role           []string  `json:"role" bson:"role"`
 	Name           string    `json:"name,omitempty" bson:"name,omitempty"`
 	CreatedAt      time.Time `json:"created_at" bson:"created_at"`
@@ -28,7 +29,6 @@ type User struct {
 	SocialLinks    map[string]string `json:"social_links,omitempty" bson:"social_links,omitempty"`
 	IsVerified     bool              `json:"is_verified" bson:"is_verified"`
 	EmailVerified  bool              `json:"email_verified" bson:"email_verified"`
-	PasswordHash   string            `json:"password_hash" bson:"password_hash"`
 	Followerscount int               `json:"followerscount" bson:"followerscount"`
 	Followcount    int               `json:"followscount" bson:"followscount"`
 }

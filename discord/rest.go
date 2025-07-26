@@ -167,12 +167,18 @@ func GetUserChats(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 
 func StartNewChat(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	user := utils.GetUserIDFromRequest(r)
-	var body struct{ Participants []string }
+
+	var body struct {
+		Participants []string `json:"participants"`
+		EntityType   string   `json:"entityType"`
+		EntityId     string   `json:"entityId"`
+	}
+
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid body", 400)
 		return
 	}
-	// ensure the requesting user is in the participants list
+
 	found := false
 	for _, p := range body.Participants {
 		if p == user {
@@ -184,8 +190,13 @@ func StartNewChat(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		http.Error(w, "must include yourself", 400)
 		return
 	}
-	// check existing chat
-	filter := bson.M{"participants": bson.M{"$all": body.Participants}}
+
+	filter := bson.M{
+		"participants": bson.M{"$all": body.Participants},
+		"entityType":   body.EntityType,
+		"entityId":     body.EntityId,
+	}
+
 	var existing Chat
 	err := db.ChatsCollection.FindOne(ctx, filter).Decode(&existing)
 	if err == nil {
@@ -197,12 +208,14 @@ func StartNewChat(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	// create new chat
+
 	now := time.Now()
 	chat := Chat{
 		Participants: body.Participants,
 		CreatedAt:    now,
 		UpdatedAt:    now,
+		EntityType:   body.EntityType,
+		EntityId:     body.EntityId,
 	}
 	res, err := db.ChatsCollection.InsertOne(ctx, chat)
 	if err != nil {
@@ -210,9 +223,61 @@ func StartNewChat(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		return
 	}
 	chat.ID = res.InsertedID.(primitive.ObjectID)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(chat)
 }
+
+// func StartNewChat(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+// 	user := utils.GetUserIDFromRequest(r)
+// 	var body struct{ Participants []string }
+// 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+// 		http.Error(w, "invalid body", 400)
+// 		return
+// 	}
+// 	// ensure the requesting user is in the participants list
+// 	found := false
+// 	for _, p := range body.Participants {
+// 		if p == user {
+// 			found = true
+// 			break
+// 		}
+// 	}
+// 	if !found {
+// 		http.Error(w, "must include yourself", 400)
+// 		return
+// 	}
+// 	// check existing chat
+// 	filter := bson.M{"participants": bson.M{"$all": body.Participants}}
+// 	var existing Chat
+// 	err := db.ChatsCollection.FindOne(ctx, filter).Decode(&existing)
+// 	if err == nil {
+// 		w.Header().Set("Content-Type", "application/json")
+// 		json.NewEncoder(w).Encode(existing)
+// 		return
+// 	}
+// 	if err != mongo.ErrNoDocuments {
+// 		http.Error(w, err.Error(), 500)
+// 		return
+// 	}
+// 	// create new chat
+// 	now := time.Now()
+// 	chat := Chat{
+// 		Participants: body.Participants,
+// 		CreatedAt:    now,
+// 		UpdatedAt:    now,
+// 		EntityType:   "fgjdfg",
+// 		EntityId:     "dfghg",
+// 	}
+// 	res, err := db.ChatsCollection.InsertOne(ctx, chat)
+// 	if err != nil {
+// 		http.Error(w, err.Error(), 500)
+// 		return
+// 	}
+// 	chat.ID = res.InsertedID.(primitive.ObjectID)
+// 	w.Header().Set("Content-Type", "application/json")
+// 	json.NewEncoder(w).Encode(chat)
+// }
 
 func GetChatByID(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	chatID, err := primitive.ObjectIDFromHex(ps.ByName("chatId"))

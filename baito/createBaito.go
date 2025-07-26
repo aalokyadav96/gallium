@@ -118,6 +118,34 @@ func GetLatestBaitos(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 		return
 	}
 
+	if len(baitos) == 0 {
+		baitos = []models.Baito{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(baitos)
+}
+
+// GetRelatedBaitos handles GET /api/baitos/latest
+func GetRelatedBaitos(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	cursor, err := db.BaitoCollection.Find(context.TODO(),
+		bson.M{}, db.OptionsFindLatest(20))
+	if err != nil {
+		http.Error(w, "DB error", http.StatusInternalServerError)
+		return
+	}
+	defer cursor.Close(context.TODO())
+
+	var baitos []models.Baito
+	if err := cursor.All(context.TODO(), &baitos); err != nil {
+		http.Error(w, "Parse error", http.StatusInternalServerError)
+		return
+	}
+
+	if len(baitos) == 0 {
+		baitos = []models.Baito{}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(baitos)
 }
@@ -332,6 +360,10 @@ func GetMyApplications(w http.ResponseWriter, r *http.Request, _ httprouter.Para
 		return
 	}
 
+	if len(results) == 0 {
+		results = []bson.M{}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(results)
 }
@@ -357,5 +389,6 @@ func saveUploadedFile(fh *multipart.FileHeader) (string, error) {
 	if _, err = io.Copy(dst, src); err != nil {
 		return "", err
 	}
-	return "/uploads/baitos/" + name, nil
+	// return "/uploads/baitos/" + name, nil
+	return name, nil
 }

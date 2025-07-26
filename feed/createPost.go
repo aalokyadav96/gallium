@@ -78,7 +78,8 @@ func CreateTweetPost(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 		}
 
 	case "video":
-		mediaRes, mediaPaths, mediaNames, err = saveUploadedVideoFile(r, "videos", newPost.PostID, newPost.UserID)
+		mediaRes, mediaPaths, mediaNames, err = saveUploadedVideoFile(r, "video", newPost.PostID, newPost.UserID)
+		log.Println(mediaRes, mediaPaths, mediaNames)
 		if err != nil {
 			http.Error(w, "Failed to upload videos: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -88,7 +89,7 @@ func CreateTweetPost(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 			return
 		}
 	case "audio":
-		mediaRes, mediaPaths, mediaNames, err = saveUploadedAudioFile(r, "audios", newPost.PostID, newPost.UserID)
+		mediaRes, mediaPaths, mediaNames, err = saveUploadedAudioFile(r, "audio", newPost.PostID, newPost.UserID)
 		if err != nil {
 			http.Error(w, "Failed to upload audios: "+err.Error(), http.StatusInternalServerError)
 			return

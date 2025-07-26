@@ -130,7 +130,7 @@ func GetProfile(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	}
 
 	// 5. Clear any sensitive fields before serializing.
-	user.Password = ""
+	// user.Password = ""
 
 	// 6. Populate follower/follow counts and online status.
 	user.Followerscount = len(userFollow.Followers)
@@ -165,7 +165,7 @@ func RespondWithUserProfile(w http.ResponseWriter, userid string) error {
 	}
 
 	// Clear sensitive fields before encoding
-	userProfile.Password = ""
+	// userProfile.Password = ""
 
 	w.Header().Set("Content-Type", "application/json")
 	return json.NewEncoder(w).Encode(userProfile)

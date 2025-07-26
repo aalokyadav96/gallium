@@ -75,7 +75,9 @@ func AddAdminRoutes(router *httprouter.Router) {
 
 func AddBaitoRoutes(router *httprouter.Router) {
 	router.POST("/api/v1/baitos/baito", ratelim.RateLimit(middleware.Authenticate(baito.CreateBaito)))
+	router.PUT("/api/v1/baitos/baito/:id", ratelim.RateLimit(middleware.Authenticate(baito.UpdateBaito)))
 	router.GET("/api/v1/baitos/latest", ratelim.RateLimit(middleware.Authenticate(baito.GetLatestBaitos)))
+	router.GET("/api/v1/baitos/related", ratelim.RateLimit(middleware.Authenticate(baito.GetRelatedBaitos)))
 	router.GET("/api/v1/baitos/baito/:id", ratelim.RateLimit(middleware.Authenticate(baito.GetBaitoByID)))
 	// owner
 	router.GET("/api/v1/baitos/mine", middleware.Authenticate(baito.GetMyBaitos))
@@ -85,6 +87,11 @@ func AddBaitoRoutes(router *httprouter.Router) {
 	router.GET("/api/v1/baitos/applications", middleware.Authenticate(baito.GetMyApplications))
 
 	router.POST("/api/v1/baitos/profile", middleware.Authenticate(baito.CreateBaitoUserProfile))
+
+	// workers
+	router.GET("/api/v1/baitos/workers", ratelim.RateLimit(middleware.Authenticate(baito.GetWorkers)))
+	router.GET("/api/v1/baitos/workers/skills", ratelim.RateLimit(middleware.Authenticate(baito.GetWorkerSkills)))
+	router.GET("/api/v1/baitos/worker/:workerId", ratelim.RateLimit(middleware.Authenticate(baito.GetWorkerById)))
 }
 
 func AddBeatRoutes(router *httprouter.Router) {

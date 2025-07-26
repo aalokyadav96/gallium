@@ -18,6 +18,7 @@ const (
 )
 
 func processUpload(r *http.Request, formKey, postID, userID string, mediaType MediaType) ([]int, []string, []string, error) {
+
 	file, err := getUploadedFile(r, formKey)
 	if err != nil || file == nil {
 		return nil, nil, nil, err
@@ -67,7 +68,6 @@ func processUpload(r *http.Request, formKey, postID, userID string, mediaType Me
 		go createSubtitleFile(uniqueID)
 		mq.Notify("postaudio-uploaded", mq.Index{})
 	}
-
 	return resolutions, []string{outputPath}, []string{uniqueID}, nil
 }
 
