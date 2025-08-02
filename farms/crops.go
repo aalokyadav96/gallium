@@ -219,6 +219,10 @@ func GetFilteredCrops(w http.ResponseWriter, r *http.Request, _ httprouter.Param
 		utils.RespondWithJSON(w, http.StatusInternalServerError, utils.M{"success": false})
 		return
 	}
+	if len(crops) == 0 {
+		crops = []models.Crop{}
+	}
+
 	utils.RespondWithJSON(w, http.StatusOK, utils.M{"success": true, "crops": crops})
 }
 

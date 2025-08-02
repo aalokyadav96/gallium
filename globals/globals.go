@@ -28,3 +28,8 @@ var CTX = context.Background()
 
 var RedisClient *redis.Client = rdx.Conn
 var MongoClient *mongo.Client = db.Client
+
+// Context keys
+type contextKey string
+
+const RoleKey contextKey = "role"

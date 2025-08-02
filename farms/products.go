@@ -95,150 +95,6 @@ func GetItems(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	})
 }
 
-// func GetItems(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-// 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-// 	defer cancel()
-
-// 	// Query parameters
-// 	itemType := r.URL.Query().Get("type")     // "product" or "tool"
-// 	search := r.URL.Query().Get("search")     // search text
-// 	category := r.URL.Query().Get("category") // filter by category
-// 	limitStr := r.URL.Query().Get("limit")
-// 	offsetStr := r.URL.Query().Get("offset")
-
-// 	limit := int64(10)
-// 	offset := int64(0)
-
-// 	if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
-// 		limit = int64(l)
-// 	}
-// 	if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
-// 		offset = int64(o)
-// 	}
-
-// 	// Build filter
-// 	filter := bson.M{}
-// 	if itemType != "" {
-// 		filter["type"] = itemType
-// 	}
-// 	if category != "" {
-// 		filter["category"] = category
-// 	}
-// 	if search != "" {
-// 		filter["name"] = bson.M{"$regex": primitive.Regex{Pattern: search, Options: "i"}}
-// 	}
-
-// 	findOptions := options.Find().
-// 		SetLimit(limit).
-// 		SetSkip(offset).
-// 		SetSort(bson.M{"name": 1})
-
-// 	cursor, err := db.ProductCollection.Find(ctx, filter, findOptions)
-// 	if err != nil {
-// 		http.Error(w, "Failed to fetch items", http.StatusInternalServerError)
-// 		return
-// 	}
-// 	defer cursor.Close(ctx)
-
-// 	var items []models.Product
-// 	if err := cursor.All(ctx, &items); err != nil {
-// 		http.Error(w, "Failed to decode items", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	// Total count (optional)
-// 	count, err := db.ProductCollection.CountDocuments(ctx, filter)
-// 	if err != nil {
-// 		http.Error(w, "Failed to count items", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(map[string]interface{}{
-// 		"items": items,
-// 		"total": count,
-// 	})
-// }
-
-// func GetProducts(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-// 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-// 	defer cancel()
-
-// 	cursor, err := db.ProductCollection.Find(ctx, struct{}{})
-// 	if err != nil {
-// 		http.Error(w, "Failed to fetch products", http.StatusInternalServerError)
-// 		return
-// 	}
-// 	defer cursor.Close(ctx)
-
-// 	var products []models.Product
-// 	if err := cursor.All(ctx, &products); err != nil {
-// 		http.Error(w, "Failed to parse products", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	json.NewEncoder(w).Encode(products)
-// }
-// func GetTools(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-// 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-// 	defer cancel()
-
-// 	query := bson.M{}
-
-// 	// Optional filtering
-// 	category := r.URL.Query().Get("category")
-// 	if category != "" {
-// 		query["category"] = category
-// 	}
-
-// 	search := r.URL.Query().Get("search")
-// 	if search != "" {
-// 		query["$or"] = []bson.M{
-// 			{"name": bson.M{"$regex": search, "$options": "i"}},
-// 			{"description": bson.M{"$regex": search, "$options": "i"}},
-// 		}
-// 	}
-
-// 	// Sorting
-// 	sortParam := r.URL.Query().Get("sort")
-// 	sort := bson.D{} // default: no sorting
-
-// 	switch sortParam {
-// 	case "price_asc":
-// 		sort = bson.D{{Key: "price", Value: 1}}
-// 	case "price_desc":
-// 		sort = bson.D{{Key: "price", Value: -1}}
-// 	case "name_asc":
-// 		sort = bson.D{{Key: "name", Value: 1}}
-// 	case "name_desc":
-// 		sort = bson.D{{Key: "name", Value: -1}}
-// 	}
-
-// 	findOptions := options.Find()
-// 	if len(sort) > 0 {
-// 		findOptions.SetSort(sort)
-// 	}
-
-// 	cursor, err := db.ProductCollection.Find(ctx, query, findOptions)
-// 	if err != nil {
-// 		http.Error(w, "Failed to fetch tools", http.StatusInternalServerError)
-// 		return
-// 	}
-// 	defer cursor.Close(ctx)
-
-// 	var tools []models.Tool
-// 	if err := cursor.All(ctx, &tools); err != nil {
-// 		http.Error(w, "Failed to parse tools", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(map[string]any{
-// 		"items": tools,
-// 		"total": len(tools),
-// 	})
-// }
-
 func CreateProduct(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	createItem(w, r, "product")
 }
@@ -551,6 +407,10 @@ func GetItemCategories(w http.ResponseWriter, r *http.Request, _ httprouter.Para
 			"Dry Fruits",
 			"Natural Sweeteners",
 		}
+	}
+
+	if len(categories) == 0 {
+		categories = []string{}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

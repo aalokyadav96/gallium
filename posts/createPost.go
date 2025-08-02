@@ -161,8 +161,13 @@ func GetAllPosts(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	for cur.Next(context.TODO()) {
 		var post models.Post
 		if err := cur.Decode(&post); err == nil {
+			post.Content = ""
 			posts = append(posts, post)
 		}
+	}
+
+	if len(posts) == 0 {
+		posts = []models.Post{}
 	}
 
 	json.NewEncoder(w).Encode(posts)

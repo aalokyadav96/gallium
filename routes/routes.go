@@ -67,10 +67,20 @@ func AddActivityRoutes(router *httprouter.Router) {
 
 	router.POST("/api/v1/scitylana/event", activity.HandleAnalyticsEvent)
 
+	router.POST("/api/v1/telemetry/env", activity.HandleTelemetry)
+	router.POST("/api/v1/telemetry/boot-error", activity.HandleTelemetry)
+	router.POST("/api/v1/telemetry/sw-event", activity.HandleTelemetry)
 }
 
 func AddAdminRoutes(router *httprouter.Router) {
-	router.GET("/api/v1/admin/reports", middleware.Authenticate(admin.GetReports))
+	// router.GET("/api/v1/admin/reports", middleware.Authenticate(admin.GetReports))
+	router.GET("/api/v1/admin/reports",
+		middleware.Authenticate(
+			middleware.RequireRoles("admin")(
+				admin.GetReports,
+			),
+		),
+	)
 }
 
 func AddBaitoRoutes(router *httprouter.Router) {
@@ -180,11 +190,18 @@ func AddAuthRoutes(router *httprouter.Router) {
 }
 
 func AddBookingRoutes(router *httprouter.Router) {
-	router.POST("/api/v1/slots", ratelim.RateLimit(booking.AddSlot))
-	router.DELETE("/api/v1/slots/:date/:time", ratelim.RateLimit(booking.DeleteSlot))
-	router.GET("/api/v1/slots/:date", middleware.Authenticate(booking.GetSlotsByDate))
-	router.GET("/api/v1/bookings/:date", ratelim.RateLimit(middleware.Authenticate(booking.GetBookingsByDate)))
-	router.POST("/api/v1/bookings", ratelim.RateLimit(middleware.Authenticate(booking.CreateBooking)))
+	// router.POST("/api/v1/slots", ratelim.RateLimit(booking.AddSlot))
+	// router.DELETE("/api/v1/slots/:date/:time", ratelim.RateLimit(booking.DeleteSlot))
+	// router.GET("/api/v1/slots/:date", middleware.Authenticate(booking.GetSlotsByDate))
+	// router.GET("/api/v1/bookings/:date", ratelim.RateLimit(middleware.Authenticate(booking.GetBookingsByDate)))
+	// router.POST("/api/v1/bookings", ratelim.RateLimit(middleware.Authenticate(booking.CreateBooking)))
+
+	router.GET("/api/v1/availability/:entityType/:entityId/:group", booking.GetAvailability)
+	router.POST("/api/v1/book", booking.BookSlot)
+	router.POST("/api/v1/slots", booking.CreateSlots)
+	router.GET("/ws/booking/:entityType/:entityId", booking.HandleWS)
+	router.DELETE("/api/v1/book/:entityType/:entityId/:slotId", booking.CancelBooking)
+
 }
 
 func AddEventsRoutes(router *httprouter.Router) {
@@ -277,11 +294,11 @@ func RegisterFarmRoutes(router *httprouter.Router) {
 	router.GET("/api/v1/farmorders/:id/receipt", middleware.Authenticate(farms.DownloadReceipt))
 
 	// 🌾 Crop catalogue & type browsing
-	router.GET("/api/v1/crops", farms.GetFilteredCrops)                                         // for search/filter
-	router.GET("/api/v1/crops/catalogue", farms.GetCropCatalogue)                               // full list
-	router.GET("/api/v1/crops/precatalogue", farms.GetPreCropCatalogue)                         // pre-published
-	router.GET("/api/v1/crops/types", farms.GetCropTypes)                                       // types list
-	router.GET("/api/v1/crops/crop/:cropname", middleware.OptionalAuth(farms.GetCropTypeFarms)) // farms by crop name
+	router.GET("/api/v1/crops", farms.GetFilteredCrops)
+	router.GET("/api/v1/crops/catalogue", farms.GetCropCatalogue)
+	router.GET("/api/v1/crops/precatalogue", farms.GetPreCropCatalogue)
+	router.GET("/api/v1/crops/types", farms.GetCropTypes)
+	router.GET("/api/v1/crops/crop/:cropname", middleware.OptionalAuth(farms.GetCropTypeFarms))
 
 	// 🛒 Items, Products, Tools
 	// -- GET
@@ -340,6 +357,9 @@ func AddTicketRoutes(router *httprouter.Router) {
 	router.POST("/api/v1/seats/:eventid/unlock-seats", ratelim.RateLimit(tickets.UnlockSeats))
 	router.POST("/api/v1/seats/:eventid/ticket/:ticketid/confirm-purchase", ratelim.RateLimit(tickets.ConfirmSeatPurchase))
 	router.GET("/api/v1/ticket/event/:eventid/:ticketid/seats", ratelim.RateLimit(tickets.GetTicketSeats))
+
+	router.POST("/api/v1/tickets/book", tickets.BuysTicket)
+
 }
 
 func AddSuggestionsRoutes(router *httprouter.Router) {

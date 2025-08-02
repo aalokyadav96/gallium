@@ -238,6 +238,10 @@ func GetMerchs(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	merchListJSON, _ := json.Marshal(merchList)
 	rdx.RdxSet(cacheKey, string(merchListJSON))
 
+	if len(merchList) == 0 {
+		merchList = []structs.Merch{}
+	}
+
 	// Respond with the list of merch
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(merchList)

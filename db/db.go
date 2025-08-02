@@ -39,6 +39,7 @@ var (
 	FollowingsCollection        *mongo.Collection
 	PlacesCollection            *mongo.Collection
 	SlotCollection              *mongo.Collection
+	ConfigsCollection           *mongo.Collection
 	BookingsCollection          *mongo.Collection
 	PostsCollection             *mongo.Collection
 	BlogPostsCollection         *mongo.Collection
@@ -123,6 +124,7 @@ func init() {
 	CatalogueCollection = db.Collection("catalogue")
 	ChatsCollection = db.Collection("chats")
 	CommentsCollection = db.Collection("comments")
+	ConfigsCollection = db.Collection("configs")
 	CropsCollection = db.Collection("crops")
 	EventsCollection = db.Collection("events")
 	FarmsCollection = db.Collection("farms")

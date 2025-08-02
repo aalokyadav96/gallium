@@ -136,6 +136,10 @@ func GetReports(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		return
 	}
 
+	if len(reports) == 0 {
+		reports = []models.Report{}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(reports)
 }

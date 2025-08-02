@@ -490,6 +490,10 @@ func GetUserChats(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		return
 	}
 
+	if len(chats) == 0 {
+		chats = []models.Chat{}
+	}
+
 	// Optional: Filter out sensitive fields or normalize if needed
 
 	w.Header().Set("Content-Type", "application/json")

@@ -539,154 +539,6 @@ func GetCropTypeFarms(w http.ResponseWriter, r *http.Request, ps httprouter.Para
 	})
 }
 
-// func GetCropTypeFarms(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-// 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-// 	defer cancel()
-
-// 	cropName := ps.ByName("cropname")
-// 	if cropName == "" {
-// 		utils.RespondWithJSON(w, http.StatusBadRequest, utils.M{
-// 			"success": false,
-// 			"message": "Missing crop name parameter",
-// 		})
-// 		return
-// 	}
-
-// 	// Optional query params
-// 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-// 	if page < 1 {
-// 		page = 1
-// 	}
-// 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-// 	if limit < 1 {
-// 		limit = 10
-// 	}
-// 	skip := (page - 1) * limit
-
-// 	sortBy := r.URL.Query().Get("sortBy")
-// 	sortOrder := r.URL.Query().Get("sortOrder")
-// 	breedFilter := strings.ToLower(r.URL.Query().Get("breed"))
-
-// 	// Find crops by name (case-insensitive)
-// 	filter := bson.M{
-// 		"name": bson.M{"$regex": primitive.Regex{Pattern: "^" + regexp.QuoteMeta(cropName) + "$", Options: "i"}},
-// 	}
-// 	cursor, err := db.CropsCollection.Find(ctx, filter)
-// 	if err != nil {
-// 		utils.RespondWithJSON(w, http.StatusInternalServerError, utils.M{
-// 			"success": false,
-// 			"message": "Failed to fetch crop data",
-// 		})
-// 		return
-// 	}
-// 	defer cursor.Close(ctx)
-
-// 	var cropInstances []models.Crop
-// 	if err := cursor.All(ctx, &cropInstances); err != nil || len(cropInstances) == 0 {
-// 		utils.RespondWithJSON(w, http.StatusNotFound, utils.M{
-// 			"success": false,
-// 			"message": "Crop type not found",
-// 		})
-// 		return
-// 	}
-
-// 	cropCategory := cropInstances[0].Category
-
-// 	// Fetch farms for crop instances
-// 	farmIDs := make([]primitive.ObjectID, len(cropInstances))
-// 	for i, crop := range cropInstances {
-// 		farmIDs[i] = crop.FarmID
-// 	}
-// 	farmCursor, err := db.FarmsCollection.Find(ctx, bson.M{"_id": bson.M{"$in": farmIDs}})
-// 	if err != nil {
-// 		utils.RespondWithJSON(w, http.StatusInternalServerError, utils.M{
-// 			"success": false,
-// 			"message": "Failed to fetch farms",
-// 		})
-// 		return
-// 	}
-// 	defer farmCursor.Close(ctx)
-
-// 	var farms []models.Farm
-// 	if err := farmCursor.All(ctx, &farms); err != nil {
-// 		utils.RespondWithJSON(w, http.StatusInternalServerError, utils.M{
-// 			"success": false,
-// 			"message": "Failed to decode farms",
-// 		})
-// 		return
-// 	}
-
-// 	type CropListing struct {
-// 		FarmID     string  `json:"farmId"`
-// 		FarmName   string  `json:"farmName"`
-// 		Location   string  `json:"location"`
-// 		Breed      string  `json:"breed"`
-// 		PricePerKg float64 `json:"pricePerKg"`
-// 	}
-
-// 	var listings []CropListing
-// 	for _, crop := range cropInstances {
-// 		if breedFilter != "" && strings.ToLower(crop.Notes) != breedFilter {
-// 			continue
-// 		}
-// 		var farmName, location string
-// 		for _, f := range farms {
-// 			if f.FarmID == crop.FarmID {
-// 				farmName = f.Name
-// 				location = f.Location
-// 				break
-// 			}
-// 		}
-// 		listings = append(listings, CropListing{
-// 			FarmID:     crop.FarmID.Hex(),
-// 			FarmName:   farmName,
-// 			Location:   location,
-// 			Breed:      crop.Notes,
-// 			PricePerKg: crop.Price,
-// 		})
-// 	}
-
-// 	// Sorting
-// 	switch sortBy {
-// 	case "price":
-// 		sort.Slice(listings, func(i, j int) bool {
-// 			if sortOrder == "desc" {
-// 				return listings[i].PricePerKg > listings[j].PricePerKg
-// 			}
-// 			return listings[i].PricePerKg < listings[j].PricePerKg
-// 		})
-// 	case "breed":
-// 		sort.Slice(listings, func(i, j int) bool {
-// 			if sortOrder == "desc" {
-// 				return listings[i].Breed > listings[j].Breed
-// 			}
-// 			return listings[i].Breed < listings[j].Breed
-// 		})
-// 	}
-
-// 	// Pagination
-// 	total := len(listings)
-// 	end := skip + limit
-// 	if skip > total {
-// 		skip = total
-// 	}
-// 	if end > total {
-// 		end = total
-// 	}
-// 	paginated := listings[skip:end]
-
-// 	// Response
-// 	utils.RespondWithJSON(w, http.StatusOK, utils.M{
-// 		"success":  true,
-// 		"name":     cropName,
-// 		"category": cropCategory,
-// 		"listings": paginated,
-// 		"total":    total,
-// 		"page":     page,
-// 		"limit":    limit,
-// 	})
-// }
-
 func GetPaginatedFarms(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -735,6 +587,10 @@ func GetPaginatedFarms(w http.ResponseWriter, r *http.Request, _ httprouter.Para
 	if err := cursor.All(ctx, &farms); err != nil {
 		utils.RespondWithJSON(w, http.StatusInternalServerError, utils.M{"success": false, "message": "Failed to decode result"})
 		return
+	}
+
+	if len(farms) == 0 {
+		farms = []models.Farm{}
 	}
 
 	utils.RespondWithJSON(w, http.StatusOK, utils.M{

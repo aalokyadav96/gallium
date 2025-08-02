@@ -469,6 +469,10 @@ func GetAvailableSeats(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 		}
 	}
 
+	if len(availableSeats) == 0 {
+		availableSeats = []string{}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{"seats": availableSeats})
 }

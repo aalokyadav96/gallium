@@ -75,6 +75,10 @@ func GetComments(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
+	if len(comments) == 0 {
+		comments = []models.Comment{}
+	}
+
 	utils.RespondWithJSON(w, http.StatusOK, comments)
 }
 

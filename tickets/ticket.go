@@ -215,6 +215,10 @@ func GetTickets(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
+	if len(tickList) == 0 {
+		tickList = []structs.Ticket{}
+	}
+
 	// // Cache the tickets in Redis
 	// ticketsJSON, _ := json.Marshal(tickList)
 	// RdxSet(cacheKey, string(ticketsJSON))

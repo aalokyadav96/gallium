@@ -61,6 +61,10 @@ func GetWorkers(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		return
 	}
 
+	if len(workers) == 0 {
+		workers = []models.BaitoUserProfile{}
+	}
+
 	total, _ := db.BaitoWorkerCollection.CountDocuments(ctx, query)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -139,6 +143,10 @@ func GetWorkerSkills(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 		if str, ok := v.(string); ok && str != "" {
 			skills = append(skills, str)
 		}
+	}
+
+	if len(skills) == 0 {
+		skills = []string{}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

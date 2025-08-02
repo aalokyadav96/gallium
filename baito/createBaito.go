@@ -224,6 +224,10 @@ func GetMyBaitos(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		http.Error(w, "Decode error", http.StatusInternalServerError)
 		return
 	}
+	if len(myJobs) == 0 {
+		myJobs = []models.Baito{}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(myJobs)
 }

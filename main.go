@@ -26,6 +26,7 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
 		// HSTS (must be on HTTPS)
 		w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
 		// Referrer and permissions
@@ -64,6 +65,7 @@ func setupRouter(rateLimiter *ratelim.RateLimiter) *httprouter.Router {
 	routes.AddArtistRoutes(router)
 	routes.AddBaitoRoutes(router)
 	routes.AddBeatRoutes(router)
+	routes.AddBookingRoutes(router)
 	routes.AddAuthRoutes(router)
 	routes.AddCartRoutes(router)
 	routes.AddCartoonRoutes(router)
@@ -105,7 +107,7 @@ func main() {
 	// read port
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = ":8080"
+		port = ":10000"
 	} else if port[0] != ':' {
 		port = ":" + port
 	}
@@ -174,157 +176,15 @@ func main() {
 	log.Println("✅ Server stopped cleanly")
 }
 
-// package main
+/*
+func withCSP(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'")
+		next.ServeHTTP(w, r)
+	})
+}
+router := httprouter.New()
+wrapped := withCSP(router)
+log.Fatal(http.ListenAndServe(":8080", wrapped))
 
-// import (
-// 	"context"
-// 	"fmt"
-// 	"log"
-// 	"naevis/newchat"
-// 	"naevis/ratelim"
-// 	"naevis/routes"
-// 	"net/http"
-// 	"os"
-// 	"os/signal"
-// 	"syscall"
-// 	"time"
-
-// 	"github.com/joho/godotenv"
-// 	"github.com/julienschmidt/httprouter"
-// 	"github.com/rs/cors"
-
-// 	_ "net/http/pprof"
-// )
-
-// // Middleware: Security headers
-// func securityHeaders(next http.Handler) http.Handler {
-// 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-// 		w.Header().Set("X-XSS-Protection", "1; mode=block")
-// 		w.Header().Set("X-Content-Type-Options", "nosniff")
-// 		w.Header().Set("X-Frame-Options", "DENY")
-// 		w.Header().Set("Cache-Control", "max-age=0, no-cache, no-store, must-revalidate, private")
-// 		next.ServeHTTP(w, r)
-// 	})
-// }
-
-// // Middleware: Simple request logging
-// func loggingMiddleware(next http.Handler) http.Handler {
-// 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-// 		log.Printf("[%s] %s %s", r.Method, r.RequestURI, r.RemoteAddr)
-// 		next.ServeHTTP(w, r)
-// 	})
-// }
-
-// // Health check endpoint
-// func Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-// 	fmt.Fprint(w, "200")
-// }
-
-// // Set up all routes and middleware layers
-// func setupRouter(rateLimiter *ratelim.RateLimiter, hub *newchat.Hub) http.Handler {
-// 	// func setupRouter(rateLimiter *ratelim.RateLimiter) http.Handler {
-// 	router := httprouter.New()
-// 	router.GET("/health", Index)
-
-// 	routes.AddActivityRoutes(router)
-// 	routes.AddAdminRoutes(router)
-// 	routes.AddAdsRoutes(router)
-// 	routes.AddArtistRoutes(router)
-// 	routes.AddBaitoRoutes(router)
-// 	routes.AddBeatRoutes(router)
-// 	routes.AddAuthRoutes(router)
-// 	routes.AddCartRoutes(router)
-// 	routes.AddCartoonRoutes(router)
-// 	routes.AddChatRoutes(router)
-// 	routes.AddCommentsRoutes(router)
-// 	routes.AddDiscordRoutes(router)
-// 	routes.AddEventsRoutes(router)
-// 	routes.RegisterFarmRoutes(router)
-// 	routes.AddFeedRoutes(router, rateLimiter)
-// 	routes.AddHomeFeedRoutes(router)
-// 	routes.AddHomeRoutes(router)
-// 	routes.AddItineraryRoutes(router)
-// 	routes.AddNewChatRoutes(router, hub)
-// 	routes.AddMapRoutes(router)
-// 	routes.AddMediaRoutes(router)
-// 	routes.AddMerchRoutes(router)
-// 	routes.AddPlaceRoutes(router)
-// 	routes.AddPlaceTabRoutes(router)
-// 	routes.AddPostRoutes(router)
-// 	routes.AddProfileRoutes(router)
-// 	routes.AddQnARoutes(router)
-// 	routes.AddRecipeRoutes(router)
-// 	routes.AddReportRoutes(router)
-// 	routes.AddReviewsRoutes(router)
-// 	routes.AddSearchRoutes(router)
-// 	routes.AddSettingsRoutes(router)
-// 	routes.AddStaticRoutes(router)
-// 	routes.AddSuggestionsRoutes(router)
-// 	routes.AddTicketRoutes(router)
-// 	routes.AddUtilityRoutes(router, rateLimiter)
-
-// 	// CORS setup (adjust AllowedOrigins in production)
-// 	c := cors.New(cors.Options{
-// 		AllowedOrigins:   []string{"*"}, // Consider specific origins in production
-// 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-// 		AllowedHeaders:   []string{"Content-Type", "Authorization"},
-// 		AllowCredentials: true,
-// 	})
-// 	go http.ListenAndServe("localhost:6060", nil)
-// 	// Wrap handlers with middleware: CORS -> Security -> Logging -> Router
-// 	return loggingMiddleware(securityHeaders(c.Handler(router)))
-// }
-
-// func main() {
-// 	// Load .env if present
-// 	if err := godotenv.Load(); err != nil {
-// 		log.Println("No .env file found. Continuing with system environment variables.")
-// 	}
-// 	var PORT = os.Getenv("PORT")
-// 	hub := newchat.NewHub()
-// 	go hub.Run()
-// 	// go newchat.CleanupOrphans()
-
-// 	rateLimiter := ratelim.NewRateLimiter()
-// 	handler := setupRouter(rateLimiter, hub)
-// 	// handler := setupRouter(rateLimiter)
-
-// 	server := &http.Server{
-// 		Addr:              PORT,
-// 		Handler:           handler,
-// 		ReadTimeout:       7 * time.Second,
-// 		WriteTimeout:      15 * time.Second,
-// 		IdleTimeout:       120 * time.Second,
-// 		ReadHeaderTimeout: 2 * time.Second,
-// 	}
-
-// 	// Register cleanup tasks on shutdown
-// 	server.RegisterOnShutdown(func() {
-// 		log.Println("🛑 Cleaning up resources before shutdown...")
-// 		// Add cleanup tasks like closing DB connection
-// 	})
-
-// 	// Start server in a goroutine
-// 	go func() {
-// 		log.Println("🚀 Server started on port ", PORT)
-// 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-// 			log.Fatalf("❌ Could not listen on port %s: %v", PORT, err)
-// 		}
-// 	}()
-
-// 	// Graceful shutdown on interrupt
-// 	shutdownChan := make(chan os.Signal, 1)
-// 	signal.Notify(shutdownChan, os.Interrupt, syscall.SIGTERM)
-// 	<-shutdownChan
-
-// 	log.Println("🛑 Shutdown signal received. Shutting down gracefully...")
-
-// 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-// 	defer cancel()
-
-// 	if err := server.Shutdown(ctx); err != nil {
-// 		log.Fatalf("❌ Server shutdown failed: %v", err)
-// 	}
-
-// 	log.Println("✅ Server stopped cleanly")
-// }
+*/

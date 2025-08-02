@@ -16,6 +16,11 @@ func ListQuestions(w http.ResponseWriter, r *http.Request, _ httprouter.Params) 
 	cur, _ := db.QuestionCollection.Find(r.Context(), bson.M{})
 	var questions []models.Question
 	cur.All(r.Context(), &questions)
+
+	if len(questions) == 0 {
+		questions = []models.Question{}
+	}
+
 	json.NewEncoder(w).Encode(questions)
 }
 
