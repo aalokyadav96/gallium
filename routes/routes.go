@@ -27,6 +27,7 @@ import (
 	"naevis/newchat"
 	"naevis/places"
 	"naevis/posts"
+	"naevis/products"
 	"naevis/profile"
 	"naevis/qna"
 	"naevis/ratelim"
@@ -163,6 +164,10 @@ func AddChatRoutes(router *httprouter.Router) {
 
 func AddHomeRoutes(router *httprouter.Router) {
 	router.GET("/api/v1/home/:apiRoute", middleware.OptionalAuth(home.GetHomeContent))
+}
+
+func AddProductRoutes(router *httprouter.Router) {
+	router.GET("/api/v1/products/:entityType/:entityId", middleware.OptionalAuth(products.GetProductDetails))
 }
 
 func AddReportRoutes(router *httprouter.Router) {

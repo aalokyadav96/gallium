@@ -83,6 +83,7 @@ func setupRouter(rateLimiter *ratelim.RateLimiter) *httprouter.Router {
 	routes.AddPlaceRoutes(router)
 	routes.AddPlaceTabRoutes(router)
 	routes.AddPostRoutes(router)
+	routes.AddProductRoutes(router)
 	routes.AddProfileRoutes(router)
 	routes.AddQnARoutes(router)
 	routes.AddRecipeRoutes(router)
@@ -107,7 +108,7 @@ func main() {
 	// read port
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = ":10000"
+		port = ":8080"
 	} else if port[0] != ':' {
 		port = ":" + port
 	}
@@ -185,6 +186,4 @@ func withCSP(next http.Handler) http.Handler {
 }
 router := httprouter.New()
 wrapped := withCSP(router)
-log.Fatal(http.ListenAndServe(":8080", wrapped))
-
-*/
+log.Fatal(http.ListenAndServe(":8080", wrapped))*/
