@@ -45,21 +45,6 @@ type Farm struct {
 	Contact            string      `json:"contact"`
 }
 
-// type Farm struct {
-// 	ID                 primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-// 	Name               string             `json:"name"`
-// 	Location           string             `json:"location"`
-// 	Description        string             `json:"description"`
-// 	Owner              string             `json:"owner"`
-// 	Contact            string             `json:"contact"`
-// 	AvailabilityTiming string             `json:"availabilityTiming"`
-// 	Crops              []Crop             `json:"crops"`
-// 	CreatedAt          time.Time          `json:"createdAt"`
-// 	UpdatedAt          time.Time          `json:"updatedAt"`
-// 	Photo              string             `json:"photo,omitempty" bson:"photo,omitempty"`
-// 	Tags               []string           `bson:"tags,omitempty" json:"tags,omitempty"`
-// }
-
 type PricePoint struct {
 	Date  time.Time `json:"date" bson:"date"`
 	Price float64   `json:"price" bson:"price"`
@@ -118,30 +103,6 @@ type CropListing struct {
 	Tags           []string `json:"tags,omitempty"`
 }
 
-// //	type Product struct {
-// //		ID          string  `json:"id" bson:"_id,omitempty"`
-// //		Name        string  `json:"name" bson:"name"`
-// //		Price       float64 `json:"price" bson:"price"`
-// //		Description string  `json:"description" bson:"description"`
-// //		ImageURL    string  `json:"imageUrl" bson:"imageUrl"`
-// //	}
-// type Product struct {
-// 	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-// 	Name        string             `bson:"name" json:"name"`
-// 	Description string             `bson:"description" json:"description"`
-// 	Price       float64            `bson:"price" json:"price"`
-// 	ImageURL    string             `bson:"imageUrl" json:"imageUrl"`
-// 	Category    string             `bson:"category" json:"category"`
-// 	Type        string             `bson:"type" json:"type"` // "product" or "tool"
-// }
-
-//	type Tool struct {
-//		ID          string  `json:"id" bson:"_id,omitempty"`
-//		Name        string  `json:"name" bson:"name"`
-//		Price       float64 `json:"price" bson:"price"`
-//		Description string  `json:"description" bson:"description"`
-//		ImageURL    string  `json:"imageUrl" bson:"imageUrl"`
-//	}
 type Product struct {
 	ID            primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	Name          string             `bson:"name" json:"name"`

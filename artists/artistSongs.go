@@ -2,16 +2,12 @@ package artists
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
-	"mime/multipart"
 	"net/http"
-	"os"
-	"path/filepath"
 	"time"
 
 	"naevis/db"
+	"naevis/filemgr"
 	"naevis/utils"
 	_ "net/http/pprof"
 
@@ -21,57 +17,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// SaveUploadedFile saves a multipart file to disk and returns the filename.
-func SaveUploadedFile(file multipart.File, header *multipart.FileHeader, destFolder string) (string, error) {
-	defer file.Close()
-
-	ext := filepath.Ext(header.Filename)
-	fileName := fmt.Sprintf("%s%s", utils.GenerateID(12), ext)
-	path := filepath.Join(destFolder, fileName)
-
-	out, err := os.Create(path)
-	if err != nil {
-		return "", err
-	}
-	defer out.Close()
-
-	if _, err := io.Copy(out, file); err != nil {
-		return "", err
-	}
-	return fileName, nil
-}
-
-// handleFileUpload handles uploading a file from a multipart form.
-// Returns the saved filename or an empty string if the field is optional and not provided.
-func handleFileUpload(r *http.Request, formKey, destDir string, required bool) (string, error) {
-	file, header, err := r.FormFile(formKey)
-	if err != nil {
-		if required {
-			return "", errors.New(formKey + " file is required")
-		}
-		return "", nil
-	}
-	defer file.Close()
-
-	fileName, err := SaveUploadedFile(file, header, destDir)
-	if err != nil {
-		return "", fmt.Errorf("failed to save %s: %w", formKey, err)
-	}
-	return fileName, nil
-}
-
-// collectSongFieldsFromForm collects form fields for a song.
-func collectSongFieldsFromForm(r *http.Request) (map[string]string, error) {
-	fields := map[string]string{
-		"title":       r.FormValue("title"),
-		"genre":       r.FormValue("genre"),
-		"duration":    r.FormValue("duration"),
-		"description": r.FormValue("description"),
-	}
-	return fields, nil
-}
-
-// PostNewSong handles uploading a new song (audio + optional poster).
 func PostNewSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	artistID := ps.ByName("id")
 
@@ -80,13 +25,13 @@ func PostNewSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	audioFileName, err := handleFileUpload(r, "audio", "static/artistpic/songs", true)
+	audioFile, err := filemgr.SaveFormFile(r.MultipartForm, "audio", filemgr.EntitySong, filemgr.PicAudio, true)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	posterFileName, err := handleFileUpload(r, "poster", "static/artistpic/posters", false)
+	posterFile, err := filemgr.SaveFormFile(r.MultipartForm, "poster", filemgr.EntitySong, filemgr.PicImage, false)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -101,8 +46,8 @@ func PostNewSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		Genre:       formFields["genre"],
 		Duration:    formFields["duration"],
 		Description: formFields["description"],
-		AudioURL:    audioFileName,
-		Poster:      posterFileName,
+		AudioURL:    audioFile,
+		Poster:      posterFile,
 		Published:   true,
 		Plays:       0,
 		UploadedAt:  primitive.NewDateTimeFromTime(time.Now()),
@@ -123,7 +68,6 @@ func PostNewSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	utils.RespondWithJSON(w, http.StatusCreated, newSong)
 }
 
-// EditSong updates song fields (title/genre/duration/description/audio/poster).
 func EditSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	artistID := ps.ByName("id")
 	songID := ps.ByName("songId")
@@ -146,22 +90,22 @@ func EditSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		}
 	}
 
-	audioFileName, err := handleFileUpload(r, "audio", "static/artistpic/songs", false)
+	audioFile, err := filemgr.SaveFormFile(r.MultipartForm, "audio", filemgr.EntitySong, filemgr.PicAudio, false)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if audioFileName != "" {
-		updateFields["songs.$.audioUrl"] = audioFileName
+	if audioFile != "" {
+		updateFields["songs.$.audioUrl"] = audioFile
 	}
 
-	posterFileName, err := handleFileUpload(r, "poster", "static/artistpic/posters", false)
+	posterFile, err := filemgr.SaveFormFile(r.MultipartForm, "poster", filemgr.EntitySong, filemgr.PicImage, false)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if posterFileName != "" {
-		updateFields["songs.$.poster"] = posterFileName
+	if posterFile != "" {
+		updateFields["songs.$.poster"] = posterFile
 	}
 
 	if len(updateFields) == 0 {
@@ -181,7 +125,6 @@ func EditSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	utils.RespondWithJSON(w, http.StatusOK, bson.M{"message": "Song updated successfully"})
 }
 
-// // PostNewSong handles uploading a new song (audio + optional poster).
 // func PostNewSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 // 	artistID := ps.ByName("id")
 
@@ -190,54 +133,42 @@ func EditSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 // 		return
 // 	}
 
-// 	// audio upload (required)
-// 	audioFile, audioHeader, err := r.FormFile("audio")
+// 	audioFile, err := filemgr.SaveFormFile(r, "audio", "static/artistpic/songs", true)
 // 	if err != nil {
-// 		utils.RespondWithError(w, http.StatusBadRequest, "Audio file is required")
-// 		return
-// 	}
-// 	audioFileName, err := SaveUploadedFile(audioFile, audioHeader, "static/artistpic/songs")
-// 	if err != nil {
-// 		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to save audio file")
+// 		utils.RespondWithError(w, http.StatusBadRequest, err.Error())
 // 		return
 // 	}
 
-// 	// poster upload (optional)
-// 	var posterFileName string
-// 	if posterFile, posterHeader, err := r.FormFile("poster"); err == nil {
-// 		posterFileName, err = SaveUploadedFile(posterFile, posterHeader, "static/artistpic/posters")
-// 		if err != nil {
-// 			utils.RespondWithError(w, http.StatusInternalServerError, "Failed to save poster image")
-// 			return
-// 		}
+// 	posterFile, err := filemgr.SaveFormFile(r, "poster", "static/artistpic/posters", false)
+// 	if err != nil {
+// 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
+// 		return
 // 	}
 
-// 	// assemble new song
+// 	formFields, _ := collectSongFieldsFromForm(r)
+
 // 	newSong := Song{
 // 		SongID:      utils.GenerateIntID(12),
 // 		ArtistID:    artistID,
-// 		Title:       r.FormValue("title"),
-// 		Genre:       r.FormValue("genre"),
-// 		Duration:    r.FormValue("duration"),
-// 		Description: r.FormValue("description"),
-// 		AudioURL:    audioFileName,
-// 		Poster:      posterFileName,
+// 		Title:       formFields["title"],
+// 		Genre:       formFields["genre"],
+// 		Duration:    formFields["duration"],
+// 		Description: formFields["description"],
+// 		AudioURL:    audioFile,
+// 		Poster:      posterFile,
 // 		Published:   true,
 // 		Plays:       0,
 // 		UploadedAt:  primitive.NewDateTimeFromTime(time.Now()),
 // 	}
 
-// 	// Upsert: If artistID exists, add song. If not, create new artist entry.
 // 	filter := bson.M{"artistid": artistID}
 // 	update := bson.M{
-// 		"$push":        bson.M{"songs": newSong},     // Add song to songs array
-// 		"$setOnInsert": bson.M{"artistid": artistID}, // Create a new artist entry if doesn't exist
+// 		"$push":        bson.M{"songs": newSong},
+// 		"$setOnInsert": bson.M{"artistid": artistID},
 // 	}
+// 	opts := options.Update().SetUpsert(true)
 
-// 	opts := options.Update().SetUpsert(true) // Upsert option ensures insertion if artist is missing
-
-// 	_, err = db.SongsCollection.UpdateOne(context.TODO(), filter, update, opts)
-// 	if err != nil {
+// 	if _, err := db.SongsCollection.UpdateOne(context.TODO(), filter, update, opts); err != nil {
 // 		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to add song to artist")
 // 		return
 // 	}
@@ -245,7 +176,6 @@ func EditSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 // 	utils.RespondWithJSON(w, http.StatusCreated, newSong)
 // }
 
-// // EditSong updates song fields (title/genre/duration/description/audio/poster).
 // func EditSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 // 	artistID := ps.ByName("id")
 // 	songID := ps.ByName("songId")
@@ -260,36 +190,35 @@ func EditSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 // 		return
 // 	}
 
+// 	formFields, _ := collectSongFieldsFromForm(r)
 // 	updateFields := bson.M{}
-// 	if v := r.FormValue("title"); v != "" {
-// 		updateFields["songs.$.title"] = v
-// 	}
-// 	if v := r.FormValue("genre"); v != "" {
-// 		updateFields["songs.$.genre"] = v
-// 	}
-// 	if v := r.FormValue("duration"); v != "" {
-// 		updateFields["songs.$.duration"] = v
-// 	}
-// 	if v := r.FormValue("description"); v != "" {
-// 		updateFields["songs.$.description"] = v
-// 	}
-
-// 	if file, header, err := r.FormFile("audio"); err == nil {
-// 		if fn, err := SaveUploadedFile(file, header, "static/artistpic/songs"); err == nil {
-// 			updateFields["songs.$.audioUrl"] = fn
-// 		} else {
-// 			utils.RespondWithError(w, http.StatusInternalServerError, "Failed to save new audio")
-// 			return
+// 	for key, value := range formFields {
+// 		if value != "" {
+// 			updateFields["songs.$."+key] = value
 // 		}
 // 	}
 
-// 	if file, header, err := r.FormFile("poster"); err == nil {
-// 		if fn, err := SaveUploadedFile(file, header, "static/artistpic/posters"); err == nil {
-// 			updateFields["songs.$.poster"] = fn
-// 		} else {
-// 			utils.RespondWithError(w, http.StatusInternalServerError, "Failed to save new poster")
-// 			return
-// 		}
+// 	audioFile, err := filemgr.SaveFormFile(r, "audio", "static/artistpic/songs", false)
+// 	if err != nil {
+// 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
+// 		return
+// 	}
+// 	if audioFile != "" {
+// 		updateFields["songs.$.audioUrl"] = audioFile
+// 	}
+
+// 	posterFile, err := filemgr.SaveFormFile(r, "poster", "static/artistpic/posters", false)
+// 	if err != nil {
+// 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
+// 		return
+// 	}
+// 	if posterFile != "" {
+// 		updateFields["songs.$.poster"] = posterFile
+// 	}
+
+// 	if len(updateFields) == 0 {
+// 		utils.RespondWithError(w, http.StatusBadRequest, "No fields to update")
+// 		return
 // 	}
 
 // 	filter := bson.M{"artistid": artistID, "songs.songid": songID}
@@ -303,6 +232,17 @@ func EditSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 // 	utils.RespondWithJSON(w, http.StatusOK, bson.M{"message": "Song updated successfully"})
 // }
+
+// collectSongFieldsFromForm collects form fields for a song.
+func collectSongFieldsFromForm(r *http.Request) (map[string]string, error) {
+	fields := map[string]string{
+		"title":       r.FormValue("title"),
+		"genre":       r.FormValue("genre"),
+		"duration":    r.FormValue("duration"),
+		"description": r.FormValue("description"),
+	}
+	return fields, nil
+}
 
 // DeleteSong removes a song by its songid.
 func DeleteSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {

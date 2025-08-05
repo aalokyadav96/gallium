@@ -72,42 +72,6 @@ func NewHub() *Hub {
 	}
 }
 
-// func (h *Hub) Run() {
-// 	for {
-// 		select {
-// 		case c := <-h.register:
-// 			h.mu.Lock()
-// 			if h.rooms[c.Room] == nil {
-// 				h.rooms[c.Room] = make(map[*Client]bool)
-// 			}
-// 			h.rooms[c.Room][c] = true
-// 			h.mu.Unlock()
-
-// 		case c := <-h.unregister:
-// 			h.mu.Lock()
-// 			if conns := h.rooms[c.Room]; conns != nil {
-// 				delete(conns, c)
-// 				close(c.Send)
-// 			}
-// 			h.mu.Unlock()
-
-// 		case m := <-h.broadcast:
-// 			h.mu.Lock()
-// 			if conns := h.rooms[m.Room]; conns != nil {
-// 				for client := range conns {
-// 					select {
-// 					case client.Send <- m.Data:
-// 					default:
-// 						close(client.Send)
-// 						delete(conns, client)
-// 					}
-// 				}
-// 			}
-// 			h.mu.Unlock()
-// 		}
-// 	}
-// }
-
 // Run keeps the Hub running to process client activity
 func (h *Hub) Run() {
 	for {

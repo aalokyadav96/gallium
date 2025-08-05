@@ -3,15 +3,12 @@ package chats
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"io"
 	"log"
 	"naevis/db"
+	"naevis/filemgr"
 	"naevis/middleware"
 	"naevis/models"
 	"net/http"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -156,47 +153,7 @@ func GetChat(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		"messages": messages,
 	})
 }
-
-func saveUploadedFile(r *http.Request) (fileURL string, fileType string, err error) {
-	file, handler, err := r.FormFile("file")
-	if err != nil {
-		if err == http.ErrMissingFile {
-			return "", "", nil
-		}
-		return "", "", fmt.Errorf("failed to read file: %w", err)
-	}
-	defer file.Close()
-
-	ext := strings.ToLower(filepath.Ext(handler.Filename))
-	allowed := map[string]string{
-		".jpg": "image", ".jpeg": "image", ".png": "image", ".gif": "image",
-		".mp4": "video", ".webm": "video", ".mov": "video",
-	}
-
-	ftype, ok := allowed[ext]
-	if !ok {
-		return "", "", fmt.Errorf("unsupported file type: %s", ext)
-	}
-
-	filename := fmt.Sprintf("%d_%s", time.Now().UnixNano(), handler.Filename)
-	savePath := filepath.Join("static", "uploads", filename)
-
-	out, err := os.Create(savePath)
-	if err != nil {
-		return "", "", fmt.Errorf("unable to create file on disk: %w", err)
-	}
-	defer out.Close()
-
-	if _, err := io.Copy(out, file); err != nil {
-		return "", "", fmt.Errorf("failed to write file: %w", err)
-	}
-
-	publicURL := "/uploads/" + filename
-	return publicURL, ftype, nil
-}
-
 func CreateMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	// 1) Validate JWT
 	tokenString := r.Header.Get("Authorization")
 	claims, err := middleware.ValidateJWT(tokenString)
 	if err != nil {
@@ -204,7 +161,6 @@ func CreateMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 		return
 	}
 
-	// 2) Parse chatID and convert to ObjectID
 	chatID := ps.ByName("chatid")
 	chatObjID, err := primitive.ObjectIDFromHex(chatID)
 	if err != nil {
@@ -212,10 +168,10 @@ func CreateMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 		return
 	}
 
-	// 3) Verify participation
-	var chat models.Chat
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
+	var chat models.Chat
 	if err := db.ChatsCollection.FindOne(ctx, bson.M{"_id": chatObjID}).Decode(&chat); err != nil {
 		http.Error(w, "Chat not found", http.StatusNotFound)
 		return
@@ -233,16 +189,13 @@ func CreateMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 		return
 	}
 
-	// 4) Parse multipart form (max 10 MB)
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
 		return
 	}
 
-	// 5) Extract “text”
 	text := r.FormValue("text")
 
-	// 6) Extract and unmarshal “replyTo” if present
 	var replyRef *models.ReplyRef
 	if v := r.FormValue("replyTo"); v != "" {
 		var rr models.ReplyRef
@@ -253,20 +206,41 @@ func CreateMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 		replyRef = &rr
 	}
 
-	// 7) Handle file upload separately
-	fileURL, fileType, err := saveUploadedFile(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+	// ⬇️ Optional file handling
+	var fileURL, fileType string
+	if r.MultipartForm != nil && r.MultipartForm.File != nil {
+		files := r.MultipartForm.File["file"]
+		if len(files) > 0 {
+			header := files[0]
+			contentType := header.Header.Get("Content-Type")
+
+			switch {
+			case strings.HasPrefix(contentType, "image/"):
+				fileType = "image"
+			case strings.HasPrefix(contentType, "video/"):
+				fileType = "video"
+			case strings.HasPrefix(contentType, "application/"):
+				fileType = "document"
+			default:
+				http.Error(w, "Unsupported file type", http.StatusBadRequest)
+				return
+			}
+
+			// Save file using filemgr
+			savedPath, err := filemgr.SaveFormFile(r.MultipartForm, "file", filemgr.EntityChat, filemgr.PicFile, false)
+			if err != nil {
+				http.Error(w, "Failed to save file", http.StatusInternalServerError)
+				return
+			}
+			fileURL = savedPath
+		}
 	}
 
-	// 8) Ensure there is either text, file, or a reply reference
 	if text == "" && fileURL == "" && replyRef == nil {
 		http.Error(w, "No content provided", http.StatusBadRequest)
 		return
 	}
 
-	// 9) Build the Message object (including optional ReplyTo)
 	now := time.Now()
 	msg := models.Message{
 		ChatID:    chatID,
@@ -278,20 +252,18 @@ func CreateMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 	}
 	if replyRef != nil {
 		msg.ReplyTo = &models.ReplyRef{
-			ID:   replyRef.ID,   // raw hex string from client
-			User: replyRef.User, // username or userID from client
+			ID:   replyRef.ID,
+			User: replyRef.User,
 			Text: replyRef.Text,
 		}
 	}
 
-	// 10) Insert into Messages collection
 	res, err := db.MessagesCollection.InsertOne(ctx, msg)
 	if err != nil {
 		http.Error(w, "Insert failed", http.StatusInternalServerError)
 		return
 	}
 
-	// 11) Update chat’s lastMessage and updatedAt
 	db.ChatsCollection.UpdateOne(
 		ctx,
 		bson.M{"_id": chatObjID},
@@ -307,11 +279,299 @@ func CreateMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 		},
 	)
 
-	// 12) Return the created message as JSON
 	msg.ID = res.InsertedID.(primitive.ObjectID)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(msg)
 }
+
+// func CreateMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+// 	tokenString := r.Header.Get("Authorization")
+// 	claims, err := middleware.ValidateJWT(tokenString)
+// 	if err != nil {
+// 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+// 		return
+// 	}
+
+// 	chatID := ps.ByName("chatid")
+// 	chatObjID, err := primitive.ObjectIDFromHex(chatID)
+// 	if err != nil {
+// 		http.Error(w, "Invalid chat ID", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+// 	defer cancel()
+
+// 	var chat models.Chat
+// 	if err := db.ChatsCollection.FindOne(ctx, bson.M{"_id": chatObjID}).Decode(&chat); err != nil {
+// 		http.Error(w, "Chat not found", http.StatusNotFound)
+// 		return
+// 	}
+
+// 	isParticipant := false
+// 	for _, uid := range chat.Users {
+// 		if uid == claims.UserID {
+// 			isParticipant = true
+// 			break
+// 		}
+// 	}
+// 	if !isParticipant {
+// 		http.Error(w, "Forbidden", http.StatusForbidden)
+// 		return
+// 	}
+
+// 	if err := r.ParseMultipartForm(10 << 20); err != nil {
+// 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	text := r.FormValue("text")
+
+// 	var replyRef *models.ReplyRef
+// 	if v := r.FormValue("replyTo"); v != "" {
+// 		var rr models.ReplyRef
+// 		if err := json.Unmarshal([]byte(v), &rr); err != nil {
+// 			http.Error(w, "Invalid replyTo payload", http.StatusBadRequest)
+// 			return
+// 		}
+// 		replyRef = &rr
+// 	}
+
+// 	// ⬇️ Handle optional file
+// 	var fileURL, fileType string
+// 	if r.MultipartForm != nil && r.MultipartForm.File != nil {
+// 		files := r.MultipartForm.File["file"]
+// 		if len(files) > 0 {
+// 			file, header, err := r.FormFile("file")
+// 			if err == nil {
+// 				defer file.Close()
+// 				contentType := header.Header.Get("Content-Type")
+
+// 				if strings.HasPrefix(contentType, "image/") {
+// 					fileType = "image"
+// 				} else if strings.HasPrefix(contentType, "video/") {
+// 					fileType = "video"
+// 				} else if strings.HasPrefix(contentType, "application/") {
+// 					fileType = "document"
+// 				} else {
+// 					http.Error(w, "Unsupported file type", http.StatusBadRequest)
+// 					return
+// 				}
+
+// 				// Save file
+// 				fileName, err := filemgr.SaveFile(file, header, "static/uploads")
+// 				if err != nil {
+// 					http.Error(w, "Failed to save file", http.StatusInternalServerError)
+// 					return
+// 				}
+// 				fileURL = "/uploads/" + fileName
+// 			}
+// 		}
+// 	}
+
+// 	if text == "" && fileURL == "" && replyRef == nil {
+// 		http.Error(w, "No content provided", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	now := time.Now()
+// 	msg := models.Message{
+// 		ChatID:    chatID,
+// 		UserID:    claims.UserID,
+// 		Text:      text,
+// 		FileURL:   fileURL,
+// 		FileType:  fileType,
+// 		CreatedAt: now,
+// 	}
+// 	if replyRef != nil {
+// 		msg.ReplyTo = &models.ReplyRef{
+// 			ID:   replyRef.ID,
+// 			User: replyRef.User,
+// 			Text: replyRef.Text,
+// 		}
+// 	}
+
+// 	res, err := db.MessagesCollection.InsertOne(ctx, msg)
+// 	if err != nil {
+// 		http.Error(w, "Insert failed", http.StatusInternalServerError)
+// 		return
+// 	}
+
+// 	db.ChatsCollection.UpdateOne(
+// 		ctx,
+// 		bson.M{"_id": chatObjID},
+// 		bson.M{
+// 			"$set": bson.M{
+// 				"lastMessage": models.MessagePreview{
+// 					Text:      text,
+// 					SenderID:  claims.UserID,
+// 					Timestamp: now,
+// 				},
+// 				"updatedAt": now,
+// 			},
+// 		},
+// 	)
+
+// 	msg.ID = res.InsertedID.(primitive.ObjectID)
+// 	w.Header().Set("Content-Type", "application/json")
+// 	json.NewEncoder(w).Encode(msg)
+// }
+
+// func saveUploadedFile(r *http.Request) (fileURL string, fileType string, err error) {
+// 	file, handler, err := r.FormFile("file")
+// 	if err != nil {
+// 		if err == http.ErrMissingFile {
+// 			return "", "", nil
+// 		}
+// 		return "", "", fmt.Errorf("failed to read file: %w", err)
+// 	}
+// 	defer file.Close()
+
+// 	ext := strings.ToLower(filepath.Ext(handler.Filename))
+// 	allowed := map[string]string{
+// 		".jpg": "image", ".jpeg": "image", ".png": "image", ".gif": "image",
+// 		".mp4": "video", ".webm": "video", ".mov": "video",
+// 	}
+
+// 	ftype, ok := allowed[ext]
+// 	if !ok {
+// 		return "", "", fmt.Errorf("unsupported file type: %s", ext)
+// 	}
+
+// 	filename := fmt.Sprintf("%d_%s", time.Now().UnixNano(), handler.Filename)
+// 	savePath := filepath.Join("static", "uploads", filename)
+
+// 	out, err := os.Create(savePath)
+// 	if err != nil {
+// 		return "", "", fmt.Errorf("unable to create file on disk: %w", err)
+// 	}
+// 	defer out.Close()
+
+// 	if _, err := io.Copy(out, file); err != nil {
+// 		return "", "", fmt.Errorf("failed to write file: %w", err)
+// 	}
+
+// 	publicURL := "/uploads/" + filename
+// 	return publicURL, ftype, nil
+// }
+
+// func CreateMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+// 	// 1) Validate JWT
+// 	tokenString := r.Header.Get("Authorization")
+// 	claims, err := middleware.ValidateJWT(tokenString)
+// 	if err != nil {
+// 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+// 		return
+// 	}
+
+// 	// 2) Parse chatID and convert to ObjectID
+// 	chatID := ps.ByName("chatid")
+// 	chatObjID, err := primitive.ObjectIDFromHex(chatID)
+// 	if err != nil {
+// 		http.Error(w, "Invalid chat ID", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	// 3) Verify participation
+// 	var chat models.Chat
+// 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+// 	defer cancel()
+// 	if err := db.ChatsCollection.FindOne(ctx, bson.M{"_id": chatObjID}).Decode(&chat); err != nil {
+// 		http.Error(w, "Chat not found", http.StatusNotFound)
+// 		return
+// 	}
+
+// 	isParticipant := false
+// 	for _, uid := range chat.Users {
+// 		if uid == claims.UserID {
+// 			isParticipant = true
+// 			break
+// 		}
+// 	}
+// 	if !isParticipant {
+// 		http.Error(w, "Forbidden", http.StatusForbidden)
+// 		return
+// 	}
+
+// 	// 4) Parse multipart form (max 10 MB)
+// 	if err := r.ParseMultipartForm(10 << 20); err != nil {
+// 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	// 5) Extract “text”
+// 	text := r.FormValue("text")
+
+// 	// 6) Extract and unmarshal “replyTo” if present
+// 	var replyRef *models.ReplyRef
+// 	if v := r.FormValue("replyTo"); v != "" {
+// 		var rr models.ReplyRef
+// 		if err := json.Unmarshal([]byte(v), &rr); err != nil {
+// 			http.Error(w, "Invalid replyTo payload", http.StatusBadRequest)
+// 			return
+// 		}
+// 		replyRef = &rr
+// 	}
+
+// 	// 7) Handle file upload separately
+// 	fileURL, fileType, err := saveUploadedFile(r)
+// 	if err != nil {
+// 		http.Error(w, err.Error(), http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	// 8) Ensure there is either text, file, or a reply reference
+// 	if text == "" && fileURL == "" && replyRef == nil {
+// 		http.Error(w, "No content provided", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	// 9) Build the Message object (including optional ReplyTo)
+// 	now := time.Now()
+// 	msg := models.Message{
+// 		ChatID:    chatID,
+// 		UserID:    claims.UserID,
+// 		Text:      text,
+// 		FileURL:   fileURL,
+// 		FileType:  fileType,
+// 		CreatedAt: now,
+// 	}
+// 	if replyRef != nil {
+// 		msg.ReplyTo = &models.ReplyRef{
+// 			ID:   replyRef.ID,   // raw hex string from client
+// 			User: replyRef.User, // username or userID from client
+// 			Text: replyRef.Text,
+// 		}
+// 	}
+
+// 	// 10) Insert into Messages collection
+// 	res, err := db.MessagesCollection.InsertOne(ctx, msg)
+// 	if err != nil {
+// 		http.Error(w, "Insert failed", http.StatusInternalServerError)
+// 		return
+// 	}
+
+// 	// 11) Update chat’s lastMessage and updatedAt
+// 	db.ChatsCollection.UpdateOne(
+// 		ctx,
+// 		bson.M{"_id": chatObjID},
+// 		bson.M{
+// 			"$set": bson.M{
+// 				"lastMessage": models.MessagePreview{
+// 					Text:      text,
+// 					SenderID:  claims.UserID,
+// 					Timestamp: now,
+// 				},
+// 				"updatedAt": now,
+// 			},
+// 		},
+// 	)
+
+// 	// 12) Return the created message as JSON
+// 	msg.ID = res.InsertedID.(primitive.ObjectID)
+// 	w.Header().Set("Content-Type", "application/json")
+// 	json.NewEncoder(w).Encode(msg)
+// }
 
 func UpdateMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	tokenString := r.Header.Get("Authorization")

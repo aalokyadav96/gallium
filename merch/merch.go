@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"naevis/db"
+	"naevis/filemgr"
 	"naevis/globals"
 	"naevis/mq"
 	"naevis/rdx"
@@ -13,7 +13,6 @@ import (
 	"naevis/userdata"
 	"naevis/utils"
 	"net/http"
-	"os"
 	"strconv"
 	"time"
 
@@ -21,9 +20,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
-var merchUploadPath string = "./static/merchpic"
-
-// Function to handle the creation of merchandise
 func CreateMerch(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	eventID := ps.ByName("eventid")
 	entityType := ps.ByName("entityType")
@@ -32,14 +28,11 @@ func CreateMerch(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	// Parse the multipart form data (with a 10MB limit)
-	err := r.ParseMultipartForm(10 << 20) // Limit the size to 10 MB
-	if err != nil {
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		http.Error(w, "Unable to parse form: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	// Retrieve form values
 	name := r.FormValue("name")
 	price, err := strconv.ParseFloat(r.FormValue("price"), 64)
 	if err != nil || price <= 0 {
@@ -53,81 +46,47 @@ func CreateMerch(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	// Validate merchandise data
 	if len(name) == 0 || len(name) > 100 {
 		http.Error(w, "Name must be between 1 and 100 characters.", http.StatusBadRequest)
 		return
 	}
 
-	// Create a new Merch instance
+	merchID := utils.GenerateID(14)
+
+	imageName, err := filemgr.SaveFormFile(
+		r.MultipartForm,
+		"image",
+		filemgr.EntityType("merch"),
+		filemgr.PictureType("photo"),
+		false,
+	)
+	if err != nil {
+		http.Error(w, "Image upload failed: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	merch := structs.Merch{
-		// EventID:    eventID,
 		EntityType: entityType,
 		EntityID:   eventID,
 		Name:       name,
 		Price:      price,
 		Stock:      stock,
-		MerchID:    utils.GenerateID(14), // Generate unique merchandise ID
+		MerchID:    merchID,
+		MerchPhoto: imageName,
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
 	}
 
-	// Handle banner file upload
-	bannerFile, bannerHeader, err := r.FormFile("image")
-	if err != nil && err != http.ErrMissingFile {
-		http.Error(w, "Error retrieving banner file: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	if bannerFile != nil {
-		defer bannerFile.Close()
-
-		// Validate file type using MIME type
-		mimeType := bannerHeader.Header.Get("Content-Type")
-		fileExtension := ""
-		switch mimeType {
-		case "image/jpeg":
-			fileExtension = ".jpg"
-		case "image/webp":
-			fileExtension = ".webp"
-		case "image/png":
-			fileExtension = ".png"
-		default:
-			http.Error(w, "Unsupported image type. Only JPG, PNG and WEBP are allowed.", http.StatusUnsupportedMediaType)
-			return
-		}
-
-		// Save the banner file securely
-		savePath := merchUploadPath + "/" + merch.MerchID + fileExtension
-		out, err := os.Create(savePath)
-		if err != nil {
-			http.Error(w, "Error saving banner: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer out.Close()
-
-		if _, err := io.Copy(out, bannerFile); err != nil {
-			http.Error(w, "Error saving banner: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-		utils.CreateThumb(merch.MerchID, merchUploadPath, ".jpg", 150, 200)
-
-		// Set the banner photo URL
-		merch.MerchPhoto = merch.MerchID + fileExtension
-	}
-
-	// Insert merchandise into MongoDB
-	// collection := client.Database("eventdb").Collection("merch")
 	_, err = db.MerchCollection.InsertOne(context.TODO(), merch)
 	if err != nil {
 		http.Error(w, "Failed to insert merchandise: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	m := mq.Index{EntityType: "merch", EntityId: merch.MerchID, Method: "POST", ItemType: "event", ItemId: eventID}
-	go mq.Emit("merch-created", m)
+	go mq.Emit("merch-created", mq.Index{
+		EntityType: "merch", EntityId: merch.MerchID, Method: "POST", ItemType: "event", ItemId: eventID,
+	})
 
-	// Respond with the created merchandise
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
 		"ok":      true,
@@ -135,6 +94,195 @@ func CreateMerch(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		"data":    merch,
 	})
 }
+
+// var merchUploadPath string = "./static/merchpic"
+
+// func CreateMerch(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+// 	eventID := ps.ByName("eventid")
+// 	entityType := ps.ByName("entityType")
+// 	if eventID == "" {
+// 		http.Error(w, "Event ID is required", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	err := r.ParseMultipartForm(10 << 20)
+// 	if err != nil {
+// 		http.Error(w, "Unable to parse form: "+err.Error(), http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	name := r.FormValue("name")
+// 	price, err := strconv.ParseFloat(r.FormValue("price"), 64)
+// 	if err != nil || price <= 0 {
+// 		http.Error(w, "Invalid price value. Must be a positive number.", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	stock, err := strconv.Atoi(r.FormValue("stock"))
+// 	if err != nil || stock < 0 {
+// 		http.Error(w, "Invalid stock value. Must be a non-negative integer.", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	if len(name) == 0 || len(name) > 100 {
+// 		http.Error(w, "Name must be between 1 and 100 characters.", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	merchID := utils.GenerateID(14)
+// 	uploadPath := merchUploadPath
+
+// 	// ⬇️ Refactored image + thumbnail handling
+// 	imageName, thumbName, err := filemgr.SaveImageWithThumb(r, "image", uploadPath, 150, false)
+// 	if err != nil {
+// 		http.Error(w, "Image upload failed: "+err.Error(), http.StatusBadRequest)
+// 		return
+// 	}
+// 	_ = thumbName
+
+// 	merch := structs.Merch{
+// 		EntityType: entityType,
+// 		EntityID:   eventID,
+// 		Name:       name,
+// 		Price:      price,
+// 		Stock:      stock,
+// 		MerchID:    merchID,
+// 		MerchPhoto: imageName,
+// 		CreatedAt:  time.Now(),
+// 		UpdatedAt:  time.Now(),
+// 	}
+
+// 	_, err = db.MerchCollection.InsertOne(context.TODO(), merch)
+// 	if err != nil {
+// 		http.Error(w, "Failed to insert merchandise: "+err.Error(), http.StatusInternalServerError)
+// 		return
+// 	}
+
+// 	m := mq.Index{EntityType: "merch", EntityId: merch.MerchID, Method: "POST", ItemType: "event", ItemId: eventID}
+// 	go mq.Emit("merch-created", m)
+
+// 	w.Header().Set("Content-Type", "application/json")
+// 	json.NewEncoder(w).Encode(map[string]any{
+// 		"ok":      true,
+// 		"message": "Merchandise created successfully.",
+// 		"data":    merch,
+// 	})
+// }
+
+// var merchUploadPath string = "./static/merchpic"
+
+// // Function to handle the creation of merchandise
+// func CreateMerch(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+// 	eventID := ps.ByName("eventid")
+// 	entityType := ps.ByName("entityType")
+// 	if eventID == "" {
+// 		http.Error(w, "Event ID is required", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	// Parse the multipart form data (with a 10MB limit)
+// 	err := r.ParseMultipartForm(10 << 20) // Limit the size to 10 MB
+// 	if err != nil {
+// 		http.Error(w, "Unable to parse form: "+err.Error(), http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	// Retrieve form values
+// 	name := r.FormValue("name")
+// 	price, err := strconv.ParseFloat(r.FormValue("price"), 64)
+// 	if err != nil || price <= 0 {
+// 		http.Error(w, "Invalid price value. Must be a positive number.", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	stock, err := strconv.Atoi(r.FormValue("stock"))
+// 	if err != nil || stock < 0 {
+// 		http.Error(w, "Invalid stock value. Must be a non-negative integer.", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	// Validate merchandise data
+// 	if len(name) == 0 || len(name) > 100 {
+// 		http.Error(w, "Name must be between 1 and 100 characters.", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	// Create a new Merch instance
+// 	merch := structs.Merch{
+// 		// EventID:    eventID,
+// 		EntityType: entityType,
+// 		EntityID:   eventID,
+// 		Name:       name,
+// 		Price:      price,
+// 		Stock:      stock,
+// 		MerchID:    utils.GenerateID(14), // Generate unique merchandise ID
+// 		CreatedAt:  time.Now(),
+// 		UpdatedAt:  time.Now(),
+// 	}
+
+// 	// Handle banner file upload
+// 	bannerFile, bannerHeader, err := r.FormFile("image")
+// 	if err != nil && err != http.ErrMissingFile {
+// 		http.Error(w, "Error retrieving banner file: "+err.Error(), http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	if bannerFile != nil {
+// 		defer bannerFile.Close()
+
+// 		// Validate file type using MIME type
+// 		mimeType := bannerHeader.Header.Get("Content-Type")
+// 		fileExtension := ""
+// 		switch mimeType {
+// 		case "image/jpeg":
+// 			fileExtension = ".jpg"
+// 		case "image/webp":
+// 			fileExtension = ".webp"
+// 		case "image/png":
+// 			fileExtension = ".png"
+// 		default:
+// 			http.Error(w, "Unsupported image type. Only JPG, PNG and WEBP are allowed.", http.StatusUnsupportedMediaType)
+// 			return
+// 		}
+
+// 		// Save the banner file securely
+// 		savePath := merchUploadPath + "/" + merch.MerchID + fileExtension
+// 		out, err := os.Create(savePath)
+// 		if err != nil {
+// 			http.Error(w, "Error saving banner: "+err.Error(), http.StatusInternalServerError)
+// 			return
+// 		}
+// 		defer out.Close()
+
+// 		if _, err := io.Copy(out, bannerFile); err != nil {
+// 			http.Error(w, "Error saving banner: "+err.Error(), http.StatusInternalServerError)
+// 			return
+// 		}
+// 		utils.CreateThumb(merch.MerchID, merchUploadPath, ".jpg", 150, 200)
+
+// 		// Set the banner photo URL
+// 		merch.MerchPhoto = merch.MerchID + fileExtension
+// 	}
+
+// 	// Insert merchandise into MongoDB
+// 	// collection := client.Database("eventdb").Collection("merch")
+// 	_, err = db.MerchCollection.InsertOne(context.TODO(), merch)
+// 	if err != nil {
+// 		http.Error(w, "Failed to insert merchandise: "+err.Error(), http.StatusInternalServerError)
+// 		return
+// 	}
+
+// 	m := mq.Index{EntityType: "merch", EntityId: merch.MerchID, Method: "POST", ItemType: "event", ItemId: eventID}
+// 	go mq.Emit("merch-created", m)
+
+// 	// Respond with the created merchandise
+// 	w.Header().Set("Content-Type", "application/json")
+// 	json.NewEncoder(w).Encode(map[string]any{
+// 		"ok":      true,
+// 		"message": "Merchandise created successfully.",
+// 		"data":    merch,
+// 	})
+// }
 
 // Fetch a single merchandise item
 func GetMerch(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {

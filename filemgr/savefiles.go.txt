@@ -1,0 +1,225 @@
+package filemgr
+
+import (
+	"bytes"
+	"fmt"
+	"image"
+	"image/jpeg"
+	"io"
+	"mime/multipart"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/disintegration/imaging"
+	"github.com/google/uuid"
+)
+
+type EntityType string
+type PictureType string
+
+const (
+	// Entity types
+	EntityArtist EntityType = "artist"
+	EntityUser   EntityType = "user"
+	EntityBaito  EntityType = "baito"
+	EntitySong   EntityType = "song"
+	EntityPost   EntityType = "post"
+
+	// Picture/File types
+	PicBanner   PictureType = "banner"
+	PicPhoto    PictureType = "photo"
+	PicMember   PictureType = "member"
+	PicThumb    PictureType = "thumb"
+	PicImage    PictureType = "image"
+	PicAudio    PictureType = "audio"
+	PicDocument PictureType = "document"
+	PicVideo    PictureType = "video"
+)
+
+var AllowedExtensions = map[PictureType][]string{
+	PicImage:    {".jpg", ".jpeg", ".png", ".gif"},
+	PicThumb:    {".jpg"},
+	PicAudio:    {".mp3", ".wav"},
+	PicVideo:    {".mp4", ".mov"},
+	PicDocument: {".pdf", ".doc", ".docx"},
+}
+
+// SaveFile writes a file to disk with optional custom name and max size limit.
+func SaveFile(reader io.Reader, header *multipart.FileHeader, destDir string, maxSize int64, customNameFn func(original string) string) (string, error) {
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	picType := detectPicType(destDir)
+
+	if !isExtensionAllowed(ext, picType) {
+		return "", fmt.Errorf("file extension %s is not allowed for %s", ext, picType)
+	}
+
+	buf, err := io.ReadAll(io.LimitReader(reader, maxSize+1))
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", header.Filename, err)
+	}
+	if maxSize > 0 && int64(len(buf)) > maxSize {
+		return "", fmt.Errorf("file size exceeds limit: %d > %d", len(buf), maxSize)
+	}
+
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return "", fmt.Errorf("mkdir %s: %w", destDir, err)
+	}
+
+	filename := ""
+	if customNameFn != nil {
+		filename = strings.TrimSpace(customNameFn(header.Filename))
+	}
+	if filename == "" {
+		filename = uuid.New().String() + ext
+	} else {
+		filename = ensureSafeFilename(filename, ext)
+	}
+
+	fullPath := filepath.Join(destDir, filename)
+	out, err := os.Create(fullPath)
+	if err != nil {
+		return "", fmt.Errorf("create %s: %w", fullPath, err)
+	}
+	defer out.Close()
+
+	if _, err := out.Write(buf); err != nil {
+		return "", fmt.Errorf("write %s: %w", fullPath, err)
+	}
+
+	return filename, nil
+}
+
+// SaveFileForEntity saves a file under an entity/type directory using defaults.
+func SaveFileForEntity(file multipart.File, header *multipart.FileHeader, entity EntityType, picType PictureType) (string, error) {
+	defer file.Close()
+	dest := ResolvePath(entity, picType)
+	return SaveFile(file, header, dest, 10<<20, nil) // 10MB default limit
+}
+
+// SaveFormFile saves a single file from a multipart form.
+func SaveFormFile(r *multipart.Form, formKey string, entity EntityType, picType PictureType, required bool) (string, error) {
+	files := r.File[formKey]
+	if len(files) == 0 {
+		if required {
+			return "", fmt.Errorf("missing required file: %s", formKey)
+		}
+		return "", nil
+	}
+	file, err := files[0].Open()
+	if err != nil {
+		return "", fmt.Errorf("open %s: %w", formKey, err)
+	}
+	return SaveFileForEntity(file, files[0], entity, picType)
+}
+
+// SaveFormFiles saves multiple files from a multipart form field.
+func SaveFormFiles(r *multipart.Form, formKey string, entity EntityType, picType PictureType, required bool) ([]string, error) {
+	files := r.File[formKey]
+	if len(files) == 0 {
+		if required {
+			return nil, fmt.Errorf("missing required files: %s", formKey)
+		}
+		return nil, nil
+	}
+
+	var saved []string
+	var errs []string
+
+	for _, hdr := range files {
+		file, err := hdr.Open()
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("open %s: %v", hdr.Filename, err))
+			continue
+		}
+		name, err := SaveFileForEntity(file, hdr, entity, picType)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("save %s: %v", hdr.Filename, err))
+			continue
+		}
+		saved = append(saved, name)
+	}
+
+	if len(errs) > 0 {
+		return saved, fmt.Errorf("partial errors: %s", strings.Join(errs, "; "))
+	}
+	return saved, nil
+}
+
+// SaveImageWithThumb saves an image and its thumbnail.
+func SaveImageWithThumb(file multipart.File, header *multipart.FileHeader, entity EntityType, picType PictureType, thumbWidth int) (string, string, error) {
+	defer file.Close()
+
+	buf, err := io.ReadAll(file)
+	if err != nil {
+		return "", "", fmt.Errorf("read file: %w", err)
+	}
+
+	img, _, err := image.Decode(bytes.NewReader(buf))
+	if err != nil {
+		return "", "", fmt.Errorf("decode %s: %w", header.Filename, err)
+	}
+
+	// Save original file
+	origName, err := SaveFile(bytes.NewReader(buf), header, ResolvePath(entity, picType), 10<<20, nil)
+	if err != nil {
+		return "", "", err
+	}
+
+	// Generate thumbnail
+	thumbImg := imaging.Resize(img, thumbWidth, 0, imaging.Lanczos)
+	thumbName := uuid.New().String() + ".jpg"
+	thumbDir := ResolvePath(entity, PicThumb)
+
+	if err := os.MkdirAll(thumbDir, 0o755); err != nil {
+		return origName, "", fmt.Errorf("mkdir %s: %w", thumbDir, err)
+	}
+
+	thumbPath := filepath.Join(thumbDir, thumbName)
+	out, err := os.Create(thumbPath)
+	if err != nil {
+		return origName, "", fmt.Errorf("create %s: %w", thumbPath, err)
+	}
+	defer out.Close()
+
+	if err := jpeg.Encode(out, thumbImg, &jpeg.Options{Quality: 85}); err != nil {
+		return origName, "", fmt.Errorf("encode thumb: %w", err)
+	}
+
+	return origName, thumbName, nil
+}
+
+// ResolvePath returns the directory path for the entity and file type.
+func ResolvePath(entity EntityType, picType PictureType) string {
+	return filepath.Join("static", "uploads", strings.ToLower(string(entity)), strings.ToLower(string(picType)))
+}
+
+// detectPicType infers the PictureType from directory structure.
+func detectPicType(destDir string) PictureType {
+	parts := strings.Split(destDir, string(os.PathSeparator))
+	if len(parts) == 0 {
+		return ""
+	}
+	return PictureType(strings.ToLower(parts[len(parts)-1]))
+}
+
+// isExtensionAllowed validates extension for given picture type.
+func isExtensionAllowed(ext string, picType PictureType) bool {
+	allowed, ok := AllowedExtensions[picType]
+	if !ok {
+		return false
+	}
+	for _, a := range allowed {
+		if ext == a {
+			return true
+		}
+	}
+	return false
+}
+
+// ensureSafeFilename cleans up custom filename and appends extension.
+func ensureSafeFilename(name, ext string) string {
+	name = strings.TrimSuffix(name, filepath.Ext(name)) // remove old ext
+	name = strings.ReplaceAll(name, " ", "_")
+	return name + ext
+}

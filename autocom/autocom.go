@@ -56,26 +56,6 @@ func AddEventToAutocorrect(client *redis.Client, eventID, eventName string) erro
 	return nil
 }
 
-// // Add a place for autocorrect suggestions
-// func AddPlaceToAutocorrect(client *redis.Client, placeID, placeName string) error {
-// 	ctx := context.Background()
-// 	key := "autocomplete:places"
-
-// 	_, err := client.ZAdd(ctx, key, []redis.Z{
-// 		{
-// 			Score:  0,
-// 			Member: placeName,
-// 		},
-// 	}...).Result()
-
-// 	if err != nil {
-// 		return fmt.Errorf("failed to add place to autocomplete: %v", err)
-// 	}
-
-// 	log.Printf("Place added for autocorrect: %s", placeName)
-// 	return nil
-// }
-
 func AddPlaceToAutocorrect(client *redis.Client, placeID, placeName string) error {
 	ctx := context.Background()
 	key := "autocomplete:places"
@@ -117,28 +97,6 @@ func SearchEventAutocorrect(client *redis.Client, query string, limit int64) ([]
 
 	return results, nil
 }
-
-// // Search place suggestions based on user input
-// func SearchPlaceAutocorrect(client *redis.Client, query string, limit int64) ([]string, error) {
-// 	ctx := context.Background()
-// 	key := "autocomplete:places"
-
-// 	// Get matching place names
-// 	results, err := client.ZRangeByLex(ctx, key, &redis.ZRangeBy{
-// 		Min:    "[" + query,
-// 		Max:    "[" + query + "\xff",
-// 		Offset: 0,
-// 		Count:  limit,
-// 	}).Result()
-
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to search places in autocomplete: %v", err)
-// 	}
-
-// 	log.Println("results() ", results)
-
-// 	return results, nil
-// }
 
 func SearchPlaceAutocorrect(client *redis.Client, query string, limit int64) ([]map[string]string, error) {
 	return FetchPlaceSuggestions(client, query)

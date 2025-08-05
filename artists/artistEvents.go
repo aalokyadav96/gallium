@@ -148,61 +148,6 @@ func addEventToDB(artistEvent models.ArtistEvent) (string, error) {
 	return "", err
 }
 
-// // Update Artist Event
-// func AddArtistToEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-// 	type RequestPayload struct {
-// 		EventID  string `json:"eventid"`
-// 		ArtistID string `json:"artistid"`
-// 	}
-
-// 	var payload RequestPayload
-// 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-// 		utils.RespondWithError(w, http.StatusBadRequest, "Invalid request payload")
-// 		return
-// 	}
-
-// 	// Fetch event details from EventsCollection
-// 	var event structs.Event
-// 	err := db.EventsCollection.FindOne(context.TODO(), bson.M{"eventid": payload.EventID}).Decode(&event)
-// 	if err != nil {
-// 		utils.RespondWithError(w, http.StatusNotFound, "Event not found")
-// 		return
-// 	}
-
-// 	payload.ArtistID = ps.ByName("id")
-
-// 	// Create a new ArtistEvent object
-// 	artistEvent := models.ArtistEvent{
-// 		EventID:   event.EventID,
-// 		ArtistID:  payload.ArtistID,
-// 		Title:     event.Title,
-// 		Date:      event.Date.Format("2006-01-02"), // Format date as string
-// 		Venue:     event.PlaceName,
-// 		City:      "", // optional: parse from event.Location if needed
-// 		Country:   "", // optional: parse from event.Location if needed
-// 		CreatorID: event.CreatorID,
-// 		TicketURL: event.WebsiteURL,
-// 	}
-
-// 	// Insert into ArtistEventsCollection
-// 	_, err = db.ArtistEventsCollection.InsertOne(context.TODO(), artistEvent)
-// 	if err != nil {
-// 		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to add artist to artist events")
-// 		return
-// 	}
-
-// 	// Add artist ID to Event's Artists array
-// 	update := bson.M{
-// 		"$addToSet": bson.M{"artists": payload.ArtistID}, // Prevent duplicate entries
-// 	}
-// 	_, err = db.EventsCollection.UpdateOne(context.TODO(), bson.M{"eventid": payload.EventID}, update)
-// 	if err != nil {
-// 		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to update event with artist")
-// 		return
-// 	}
-
-//		utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "Artist successfully added to event"})
-//	}
 func AddArtistToEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	type RequestPayload struct {
 		EventID  string `json:"eventid"`

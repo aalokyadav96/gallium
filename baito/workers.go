@@ -74,60 +74,6 @@ func GetWorkers(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	})
 }
 
-// func GetWorkers(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-// 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-// 	defer cancel()
-
-// 	query := bson.M{}
-// 	search := strings.TrimSpace(r.URL.Query().Get("search"))
-// 	skill := strings.TrimSpace(r.URL.Query().Get("skill"))
-// 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-// 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-
-// 	if page <= 0 {
-// 		page = 1
-// 	}
-// 	if limit <= 0 {
-// 		limit = 10
-// 	}
-
-// 	if search != "" {
-// 		query["$or"] = bson.A{
-// 			bson.M{"name": bson.M{"$regex": search, "$options": "i"}},
-// 			bson.M{"address": bson.M{"$regex": search, "$options": "i"}},
-// 		}
-// 	}
-
-// 	if skill != "" {
-// 		query["preferred_roles"] = skill
-// 	}
-
-// 	skip := (page - 1) * limit
-
-// 	cursor, err := db.BaitoWorkerCollection.Find(ctx, query, options.Find().SetSkip(int64(skip)).SetLimit(int64(limit)))
-// 	if err != nil {
-// 		http.Error(w, "Error querying workers", http.StatusInternalServerError)
-// 		return
-// 	}
-// 	defer cursor.Close(ctx)
-
-// 	var results []models.BaitoUserProfile
-// 	if err := cursor.All(ctx, &results); err != nil {
-// 		http.Error(w, "Failed to parse results", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	total, _ := db.BaitoWorkerCollection.CountDocuments(ctx, query)
-
-// 	response := map[string]interface{}{
-// 		"data":  results,
-// 		"total": total,
-// 	}
-
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(response)
-// }
-
 func GetWorkerSkills(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -153,27 +99,6 @@ func GetWorkerSkills(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 	json.NewEncoder(w).Encode(skills)
 }
 
-// func GetWorkerSkills(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-// 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-// 	defer cancel()
-
-// 	cursor, err := db.BaitoWorkerCollection.Distinct(ctx, "preferred_roles", bson.M{})
-// 	if err != nil {
-// 		http.Error(w, "Failed to fetch skills", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	var skills []string
-// 	for _, val := range cursor {
-// 		if str, ok := val.(string); ok {
-// 			skills = append(skills, str)
-// 		}
-// 	}
-
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(skills)
-// }
-
 func GetWorkerById(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -198,28 +123,3 @@ func GetWorkerById(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(worker)
 }
-
-// func GetWorkerById(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-// 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-// 	defer cancel()
-
-// 	workerId := ps.ByName("workerId")
-// 	if workerId == "" {
-// 		http.Error(w, "Missing worker ID", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	var worker models.BaitoUserProfile
-// 	err := db.BaitoWorkerCollection.FindOne(ctx, bson.M{"baito_user_id": workerId}).Decode(&worker)
-// 	if err != nil {
-// 		if err == mongo.ErrNoDocuments {
-// 			http.Error(w, "Worker not found", http.StatusNotFound)
-// 			return
-// 		}
-// 		http.Error(w, "Failed to fetch worker", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(worker)
-// }

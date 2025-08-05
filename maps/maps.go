@@ -38,32 +38,6 @@ func GetMapConfig(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	json.NewEncoder(w).Encode(config)
 }
 
-// func GetMapConfig(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-// 	var config struct {
-// 		MapImage        string            `json:"mapImage"`
-// 		SpritePositions map[string]string `json:"spritePositions"`
-// 		TypeLabels      map[string]string `json:"typeLabels"`
-// 	}
-
-// 	err := db.MapsCollection.FindOne(r.Context(), map[string]interface{}{"_id": "default"}).Decode(&config)
-// 	if err != nil {
-// 		http.Error(w, "Config not found", http.StatusNotFound)
-// 		return
-// 	}
-
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(config)
-// }
-
-// const markers = [
-//   { type: "petrol", name: "Pump 1", x: 100, y: 100, id: "AI6tul8sOvWCaC" },
-//   { type: "shop", name: "Shop 1", x: 400, y: 550, id: "654" },
-//   { type: "petrol", name: "Pump 2", x: 100, y: 750, id: "456" },
-//   { type: "hospital", name: "Hospital", x: 800, y: 600, id: "645" },
-//   { type: "police", name: "Police Station", x: 600, y: 600, id: "456" },
-//   { type: "restaurant", name: "Burger Place", x: 700, y: 450, id: "456" },
-// ];
-
 func GetMapMarkers(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	res := r.URL.Query()
 	fmt.Println(res)
@@ -87,29 +61,3 @@ func GetMapMarkers(w http.ResponseWriter, r *http.Request, _ httprouter.Params) 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(markers)
 }
-
-// func GetMapMarkers(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-// 	type Marker struct {
-// 		ID   string `json:"id" bson:"_id"`
-// 		Name string `json:"name"`
-// 		Type string `json:"type"`
-// 		X    int    `json:"x"`
-// 		Y    int    `json:"y"`
-// 	}
-
-// 	cursor, err := db.MapsCollection.Find(r.Context(), map[string]interface{}{})
-// 	if err != nil {
-// 		http.Error(w, "Failed to load markers", http.StatusInternalServerError)
-// 		return
-// 	}
-// 	defer cursor.Close(r.Context())
-
-// 	var markers []Marker
-// 	if err = cursor.All(r.Context(), &markers); err != nil {
-// 		http.Error(w, "Failed to parse markers", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(markers)
-// }

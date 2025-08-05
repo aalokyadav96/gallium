@@ -33,7 +33,7 @@ func AddMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	err := r.ParseMultipartForm(50 << 20) // Limit to 50 MB
+	err := r.ParseMultipartForm(50 << 20)
 	if err != nil {
 		http.Error(w, "Unable to parse form: "+err.Error(), http.StatusBadRequest)
 		return
@@ -69,51 +69,57 @@ func AddMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		}
 		return
 	}
-	if file != nil {
-		defer file.Close()
+	defer file.Close()
+
+	mimeType := fileHeader.Header.Get("Content-Type")
+	media.MimeType = mimeType
+
+	// Determine extension and type
+	var extension string
+	switch {
+	case strings.HasPrefix(mimeType, "image/"):
+		extension = filepath.Ext(fileHeader.Filename)
+		media.Type = "image"
+	case strings.HasPrefix(mimeType, "video/"):
+		extension = ".mp4"
+		media.Type = "video"
+	default:
+		http.Error(w, "Unsupported media type", http.StatusUnsupportedMediaType)
+		return
 	}
 
-	var fileExtension, mimeType string
-	if file != nil {
-		mimeType = fileHeader.Header.Get("Content-Type")
-		switch {
-		case strings.HasPrefix(mimeType, "image/"):
-			fileExtension = ".jpg"
-			media.Type = "image"
-		case strings.HasPrefix(mimeType, "video/"):
-			fileExtension = ".mp4"
-			media.Type = "video"
-		default:
-			http.Error(w, "Unsupported media type", http.StatusUnsupportedMediaType)
-			return
-		}
+	// Save file using filemgr
+	filename := media.ID + extension
+	fullPath := filepath.Join(mediaUploadPath, filename)
+	outFile, err := os.Create(fullPath)
+	if err != nil {
+		http.Error(w, "Error saving media file: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer outFile.Close()
 
-		savePath := mediaUploadPath + "/" + media.ID + fileExtension
-		out, err := os.Create(savePath)
-		if err != nil {
-			http.Error(w, "Error saving media file: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer out.Close()
+	if _, err := io.Copy(outFile, file); err != nil {
+		http.Error(w, "Error writing media file: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
-		if _, err := io.Copy(out, file); err != nil {
-			http.Error(w, "Error saving media file: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
+	media.URL = filename
 
-		media.URL = media.ID + fileExtension
-		media.MimeType = mimeType
-		if media.Type == "video" {
-			media.FileSize = fileHeader.Size
-			media.Duration = ExtractVideoDuration(savePath)
-		}
-		// Generate default poster from the original video
-		defaultPosterPath := filepath.Join(mediaUploadPath, "/", media.ID+".jpg")
-		feed.CreatePoster(savePath, defaultPosterPath, "00:00:01")
+	switch media.Type {
+	case "video":
+		media.FileSize = fileHeader.Size
+		media.Duration = ExtractVideoDuration(fullPath)
 
-		utils.CreateThumb(media.ID, mediaUploadPath, ".jpg", 150, 200)
+		posterPath := filepath.Join(mediaUploadPath, media.ID+".jpg")
+		feed.CreatePoster(fullPath, posterPath, "00:00:01")
+		fmt.Printf("Default poster %s created successfully!\n", posterPath)
 
-		fmt.Printf("Default poster %s created successfully!\n", defaultPosterPath)
+		// Optional: generate a thumbnail for the poster image
+		// utils.CreateThumb(media.ID, mediaUploadPath, ".jpg", 150, 200)
+	case "image":
+		// Generate image thumbnail
+		// Using your utility or imaging logic
+		utils.CreateThumb(media.ID, mediaUploadPath, extension, 150, 200)
 	}
 
 	_, err = db.MediaCollection.InsertOne(r.Context(), media)
@@ -130,6 +136,114 @@ func AddMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(media)
 }
+
+// var mediaUploadPath = "./static/uploads"
+
+// func AddMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+// 	entityType := ps.ByName("entitytype")
+// 	entityID := ps.ByName("entityid")
+// 	if entityID == "" {
+// 		http.Error(w, "Entity ID is required", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	err := r.ParseMultipartForm(50 << 20) // Limit to 50 MB
+// 	if err != nil {
+// 		http.Error(w, "Unable to parse form: "+err.Error(), http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	requestingUserID, ok := r.Context().Value(globals.UserIDKey).(string)
+// 	if !ok || requestingUserID == "" {
+// 		http.Error(w, "Invalid or missing user ID", http.StatusUnauthorized)
+// 		return
+// 	}
+
+// 	media := structs.Media{
+// 		EntityID:   entityID,
+// 		EntityType: entityType,
+// 		Caption:    r.FormValue("caption"),
+// 		CreatorID:  requestingUserID,
+// 		CreatedAt:  time.Now(),
+// 		UpdatedAt:  time.Now(),
+// 	}
+
+// 	if entityType == "event" {
+// 		media.ID = "e" + utils.GenerateID(16)
+// 	} else {
+// 		media.ID = "p" + utils.GenerateID(16)
+// 	}
+
+// 	file, fileHeader, err := r.FormFile("media")
+// 	if err != nil {
+// 		if err == http.ErrMissingFile {
+// 			http.Error(w, "Media file is required", http.StatusBadRequest)
+// 		} else {
+// 			http.Error(w, "Error retrieving media file: "+err.Error(), http.StatusBadRequest)
+// 		}
+// 		return
+// 	}
+// 	if file != nil {
+// 		defer file.Close()
+// 	}
+
+// 	var fileExtension, mimeType string
+// 	if file != nil {
+// 		mimeType = fileHeader.Header.Get("Content-Type")
+// 		switch {
+// 		case strings.HasPrefix(mimeType, "image/"):
+// 			fileExtension = ".jpg"
+// 			media.Type = "image"
+// 		case strings.HasPrefix(mimeType, "video/"):
+// 			fileExtension = ".mp4"
+// 			media.Type = "video"
+// 		default:
+// 			http.Error(w, "Unsupported media type", http.StatusUnsupportedMediaType)
+// 			return
+// 		}
+
+// 		savePath := mediaUploadPath + "/" + media.ID + fileExtension
+// 		out, err := os.Create(savePath)
+// 		if err != nil {
+// 			http.Error(w, "Error saving media file: "+err.Error(), http.StatusInternalServerError)
+// 			return
+// 		}
+// 		defer out.Close()
+
+// 		if _, err := io.Copy(out, file); err != nil {
+// 			http.Error(w, "Error saving media file: "+err.Error(), http.StatusInternalServerError)
+// 			return
+// 		}
+
+// 		media.URL = media.ID + fileExtension
+// 		media.MimeType = mimeType
+// 		if media.Type == "video" {
+// 			media.FileSize = fileHeader.Size
+// 			media.Duration = ExtractVideoDuration(savePath)
+// 		}
+// 		// Generate default poster from the original video
+// 		defaultPosterPath := filepath.Join(mediaUploadPath, "/", media.ID+".jpg")
+// 		feed.CreatePoster(savePath, defaultPosterPath, "00:00:01")
+
+// 		utils.CreateThumb(media.ID, mediaUploadPath, ".jpg", 150, 200)
+
+// 		fmt.Printf("Default poster %s created successfully!\n", defaultPosterPath)
+// 	}
+
+// 	_, err = db.MediaCollection.InsertOne(r.Context(), media)
+// 	if err != nil {
+// 		http.Error(w, "Error saving media to database: "+err.Error(), http.StatusInternalServerError)
+// 		return
+// 	}
+
+// 	userdata.SetUserData("media", media.ID, requestingUserID, entityType, entityID)
+
+// 	m := mq.Index{EntityType: "media", EntityId: media.ID, Method: "POST", ItemType: entityType, ItemId: entityID}
+// 	go mq.Emit("media-created", m)
+
+// 	w.Header().Set("Content-Type", "application/json")
+// 	json.NewEncoder(w).Encode(media)
+// }
 
 func GetMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	entityType := ps.ByName("entitytype")

@@ -144,62 +144,6 @@ func AddUserDataBatch(docs []structs.UserData) {
 	}
 }
 
-// func GetOtherUserProfileData(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-// 	username := ps.ByName("username")
-
-// 	// tokenString := r.Header.Get("Authorization")
-// 	// claims, err := middleware.ValidateJWT(tokenString)
-// 	// if err != nil {
-// 	// 	http.Error(w, "Unauthorized", http.StatusUnauthorized)
-// 	// 	return
-// 	// }
-// 	// if username != claims.UserID {
-// 	// 	http.Error(w, "Unauthorized", http.StatusUnauthorized)
-// 	// 	return
-// 	// }
-// 	// Parse the query parameter for the entity type
-// 	entityType := r.URL.Query().Get("entity_type")
-// 	if entityType == "" {
-// 		http.Error(w, "Entity type is required", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	// Validate the entity type
-// 	if !IsValidEntityType(entityType) {
-// 		http.Error(w, "Invalid entity type", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	// Fetch user data from MongoDB
-// 	filter := bson.M{"entity_type": entityType, "userid": username}
-// 	cursor, err := db.UserDataCollection.Find(context.TODO(), filter)
-// 	if err != nil {
-// 		http.Error(w, "Failed to fetch user data", http.StatusInternalServerError)
-// 		log.Printf("Error fetching user data: %v", err)
-// 		return
-// 	}
-// 	defer cursor.Close(context.TODO())
-
-// 	var results []structs.UserData
-// 	if err := cursor.All(context.TODO(), &results); err != nil {
-// 		http.Error(w, "Failed to decode user data", http.StatusInternalServerError)
-// 		log.Printf("Error decoding user data: %v", err)
-// 		return
-// 	}
-// 	fmt.Println(results)
-// 	if len(results) == 0 {
-// 		results = []structs.UserData{}
-// 	}
-
-// 	// Respond with the results
-// 	w.Header().Set("Content-Type", "application/json")
-// 	if err := json.NewEncoder(w).Encode(results); err != nil {
-// 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-// 		log.Printf("Error encoding response: %v", err)
-// 		return
-// 	}
-// }
-
 func GetOtherUserProfileData(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	// username := ps.ByName("username") // from /user/{username}/data
 	// entityType := r.URL.Query().Get("entity_type")

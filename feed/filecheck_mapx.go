@@ -139,32 +139,6 @@ func CheckUserInFile(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 	checkUserInFile(w, claims.UserID, req.Hash)
 }
 
-// func CheckUserInFile(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-// 	tokenString := r.Header.Get("Authorization")
-// 	claims, err := middleware.ValidateJWT(tokenString)
-// 	if err != nil {
-// 		log.Printf("JWT validation error: %v", err) // Log the error for debugging
-// 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-// 		return
-// 	}
-
-// 	var req struct {
-// 		Hash string `json:"hash"`
-// 	}
-
-// 	fmt.Println("-------|-------")
-// 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-// 		log.Printf("Decode error: %v", err)
-// 		http.Error(w, "Invalid request", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	fmt.Println("-------|-------")
-// 	fmt.Println(req)
-
-// 	checkUserInFile(w, claims.UserID, req.Hash)
-// }
-
 func checkUserInFile(w http.ResponseWriter, userID, hash string) {
 	// Query MongoDB for the file using the hash
 

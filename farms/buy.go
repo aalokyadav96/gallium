@@ -160,34 +160,6 @@ func GetIncomingFarmOrders(w http.ResponseWriter, r *http.Request, ps httprouter
 	utils.RespondWithJSON(w, http.StatusOK, utils.M{"success": true, "orders": orders})
 }
 
-// POST /api/v1/farmorders/:id/accept
-// func AcceptOrder(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-// 	orderID := ps.ByName("id")
-// 	// TODO: Mark order as accepted
-// 	_ = orderID
-// }
-
-// POST /api/v1/farmorders/:id/reject
-// func RejectOrder(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-// 	orderID := ps.ByName("id")
-// 	// TODO: Mark order as rejected
-// 	_ = orderID
-// }
-
-// POST /api/v1/farmorders/:id/deliver
-// func MarkOrderDelivered(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-// 	orderID := ps.ByName("id")
-// 	// TODO: Update delivery status to "Delivered"
-// 	_ = orderID
-// }
-
-// POST /api/v1/farmorders/:id/markpaid
-// func MarkOrderPaid(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-// 	orderID := ps.ByName("id")
-// 	// TODO: Update payment status to "Paid"
-// 	_ = orderID
-// }
-
 func updateOrderStatus(w http.ResponseWriter, orderID string, newStatus string) {
 	objID, err := primitive.ObjectIDFromHex(orderID)
 	if err != nil {

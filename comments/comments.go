@@ -161,45 +161,6 @@ func UpdateComment(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 	utils.RespondWithJSON(w, http.StatusOK, updated)
 }
 
-// func UpdateComment(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-// 	commentID := ps.ByName("commentid")
-
-// 	var body struct {
-// 		Content string `json:"content"`
-// 	}
-// 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-// 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	objID, err := primitive.ObjectIDFromHex(commentID)
-// 	if err != nil {
-// 		http.Error(w, "Invalid ID", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	update := bson.M{
-// 		"$set": bson.M{
-// 			"content":    body.Content,
-// 			"updated_at": time.Now(),
-// 		},
-// 	}
-
-// 	_, err = db.CommentsCollection.UpdateByID(context.TODO(), objID, update)
-// 	if err != nil {
-// 		http.Error(w, "DB update failed", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	var updated models.Comment
-// 	if err := db.CommentsCollection.FindOne(context.TODO(), bson.M{"_id": objID}).Decode(&updated); err != nil {
-// 		http.Error(w, "Fetch failed", http.StatusInternalServerError)
-// 		return
-// 	}
-
-//		utils.RespondWithJSON(w, http.StatusOK, updated)
-//	}
-
 func DeleteComment(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	commentID := ps.ByName("commentid")
 
@@ -236,21 +197,3 @@ func DeleteComment(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 
 	w.WriteHeader(http.StatusNoContent)
 }
-
-// func DeleteComment(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-// 	commentID := ps.ByName("commentid")
-
-// 	objID, err := primitive.ObjectIDFromHex(commentID)
-// 	if err != nil {
-// 		http.Error(w, "Invalid ID", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	_, err = db.CommentsCollection.DeleteOne(context.TODO(), bson.M{"_id": objID})
-// 	if err != nil {
-// 		http.Error(w, "Delete failed", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	w.WriteHeader(http.StatusNoContent)
-// }

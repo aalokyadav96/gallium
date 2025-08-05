@@ -4,16 +4,15 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"naevis/db"
+	"naevis/filemgr"
 	"naevis/globals"
 	"naevis/models"
 	"naevis/rdx"
@@ -28,55 +27,6 @@ import (
 func getUserIDFromContext(r *http.Request) (string, bool) {
 	userID, ok := r.Context().Value(globals.UserIDKey).(string)
 	return userID, ok
-}
-
-func handleImageUpload(r *http.Request, fieldName, dir string) (string, error) {
-	file, header, err := r.FormFile(fieldName)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-
-	filename := fmt.Sprintf("%d_%s", time.Now().UnixNano(), filepath.Ext(header.Filename))
-	fullDir := "./static/uploads/" + dir
-	path := fullDir + "/" + filename
-	os.MkdirAll(fullDir, os.ModePerm)
-
-	out, err := os.Create(path)
-	if err != nil {
-		return "", err
-	}
-	defer out.Close()
-
-	io.Copy(out, file)
-	return "/uploads/" + dir + "/" + filename, nil
-}
-
-func parseCropForm(r *http.Request) models.Crop {
-	cropName := r.FormValue("name")
-	formatted := strings.ToLower(strings.ReplaceAll(cropName, " ", "_"))
-	crop := models.Crop{
-		ID:         primitive.NewObjectID(),
-		Name:       r.FormValue("name"),
-		Price:      utils.ParseFloat(r.FormValue("price")),
-		Quantity:   utils.ParseInt(r.FormValue("quantity")),
-		Unit:       r.FormValue("unit"),
-		Notes:      r.FormValue("notes"),
-		Category:   r.FormValue("category"),
-		Featured:   r.FormValue("featured") == "true",
-		OutOfStock: r.FormValue("outOfStock") == "true",
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
-		CropId:     formatted,
-	}
-
-	if d := utils.ParseDate(r.FormValue("harvestDate")); d != nil {
-		crop.HarvestDate = d
-	}
-	if d := utils.ParseDate(r.FormValue("expiryDate")); d != nil {
-		crop.ExpiryDate = d
-	}
-	return crop
 }
 
 func AddCrop(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -105,8 +55,9 @@ func AddCrop(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	crop := parseCropForm(r)
 	crop.FarmID = farmID
 
-	if imageURL, err := handleImageUpload(r, "image", "crops"); err == nil {
-		crop.ImageURL = imageURL
+	filename, err := filemgr.SaveFormFile(r.MultipartForm, "image", filemgr.EntityCrop, filemgr.PictureMain, false)
+	if err == nil && filename != "" {
+		crop.ImageURL = "/uploads/crops/" + filename
 	}
 
 	_, err = db.CropsCollection.InsertOne(context.Background(), crop)
@@ -117,7 +68,6 @@ func AddCrop(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 	utils.RespondWithJSON(w, http.StatusOK, utils.M{"success": true, "cropId": crop.ID.Hex()})
 }
-
 func EditCrop(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	cropID, err := primitive.ObjectIDFromHex(ps.ByName("cropid"))
 	if err != nil {
@@ -131,6 +81,7 @@ func EditCrop(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	}
 
 	r.ParseMultipartForm(10 << 20)
+
 	update := bson.M{
 		"name":       r.FormValue("name"),
 		"unit":       r.FormValue("unit"),
@@ -150,8 +101,9 @@ func EditCrop(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		update["expiryDate"] = d
 	}
 
-	if imageURL, err := handleImageUpload(r, "image", "crops"); err == nil {
-		update["imageUrl"] = imageURL
+	filename, err := filemgr.SaveFormFile(r.MultipartForm, "image", filemgr.EntityCrop, filemgr.PictureMain, false)
+	if err == nil && filename != "" {
+		update["imageUrl"] = "/uploads/crops/" + filename
 	}
 
 	_, err = db.CropsCollection.UpdateOne(context.Background(), bson.M{"_id": cropID}, bson.M{"$set": update})
@@ -162,6 +114,228 @@ func EditCrop(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 	utils.RespondWithJSON(w, http.StatusOK, utils.M{"success": true})
 }
+
+// func AddCrop(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+// 	farmID, err := primitive.ObjectIDFromHex(ps.ByName("id"))
+// 	if err != nil {
+// 		utils.RespondWithJSON(w, http.StatusBadRequest, utils.M{"success": false, "message": "Invalid farm ID"})
+// 		return
+// 	}
+
+// 	if _, ok := getUserIDFromContext(r); !ok {
+// 		http.Error(w, "Invalid user", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	if err := r.ParseMultipartForm(10 << 20); err != nil {
+// 		utils.RespondWithJSON(w, http.StatusBadRequest, utils.M{"success": false, "message": "Invalid form"})
+// 		return
+// 	}
+
+// 	name := r.FormValue("name")
+// 	if name == "" {
+// 		utils.RespondWithJSON(w, http.StatusBadRequest, utils.M{"success": false, "message": "Name is required"})
+// 		return
+// 	}
+
+// 	crop := parseCropForm(r)
+// 	crop.FarmID = farmID
+
+// 	// ⬇️ Use filemgr for crop image
+// 	filename, err := filemgr.SaveFormFile(r, "image", "./static/uploads/crops", false)
+// 	if err == nil && filename != "" {
+// 		crop.ImageURL = "/uploads/crops/" + filename
+// 	}
+
+// 	_, err = db.CropsCollection.InsertOne(context.Background(), crop)
+// 	if err != nil {
+// 		utils.RespondWithJSON(w, http.StatusInternalServerError, utils.M{"success": false, "message": "Insert failed"})
+// 		return
+// 	}
+
+// 	utils.RespondWithJSON(w, http.StatusOK, utils.M{"success": true, "cropId": crop.ID.Hex()})
+// }
+
+// func EditCrop(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+// 	cropID, err := primitive.ObjectIDFromHex(ps.ByName("cropid"))
+// 	if err != nil {
+// 		utils.RespondWithJSON(w, http.StatusBadRequest, utils.M{"success": false, "message": "Invalid crop ID"})
+// 		return
+// 	}
+
+// 	if _, ok := getUserIDFromContext(r); !ok {
+// 		http.Error(w, "Invalid user", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	r.ParseMultipartForm(10 << 20)
+
+// 	update := bson.M{
+// 		"name":       r.FormValue("name"),
+// 		"unit":       r.FormValue("unit"),
+// 		"price":      utils.ParseFloat(r.FormValue("price")),
+// 		"quantity":   utils.ParseInt(r.FormValue("quantity")),
+// 		"notes":      r.FormValue("notes"),
+// 		"category":   r.FormValue("category"),
+// 		"featured":   r.FormValue("featured") == "true",
+// 		"outOfStock": r.FormValue("outOfStock") == "true",
+// 		"updatedAt":  time.Now(),
+// 	}
+
+// 	if d := utils.ParseDate(r.FormValue("harvestDate")); d != nil {
+// 		update["harvestDate"] = d
+// 	}
+// 	if d := utils.ParseDate(r.FormValue("expiryDate")); d != nil {
+// 		update["expiryDate"] = d
+// 	}
+
+// 	// ⬇️ Optional image replacement
+// 	filename, err := filemgr.SaveFormFile(r, "image", "./static/uploads/crops", false)
+// 	if err == nil && filename != "" {
+// 		update["imageUrl"] = "/uploads/crops/" + filename
+// 	}
+
+// 	_, err = db.CropsCollection.UpdateOne(context.Background(), bson.M{"_id": cropID}, bson.M{"$set": update})
+// 	if err != nil {
+// 		utils.RespondWithJSON(w, http.StatusInternalServerError, utils.M{"success": false})
+// 		return
+// 	}
+
+// 	utils.RespondWithJSON(w, http.StatusOK, utils.M{"success": true})
+// }
+
+// func handleImageUpload(r *http.Request, fieldName, dir string) (string, error) {
+// 	file, header, err := r.FormFile(fieldName)
+// 	if err != nil {
+// 		return "", err
+// 	}
+// 	defer file.Close()
+
+// 	filename := fmt.Sprintf("%d_%s", time.Now().UnixNano(), filepath.Ext(header.Filename))
+// 	fullDir := "./static/uploads/" + dir
+// 	path := fullDir + "/" + filename
+// 	os.MkdirAll(fullDir, os.ModePerm)
+
+// 	out, err := os.Create(path)
+// 	if err != nil {
+// 		return "", err
+// 	}
+// 	defer out.Close()
+
+// 	io.Copy(out, file)
+// 	return "/uploads/" + dir + "/" + filename, nil
+// }
+
+func parseCropForm(r *http.Request) models.Crop {
+	cropName := r.FormValue("name")
+	formatted := strings.ToLower(strings.ReplaceAll(cropName, " ", "_"))
+	crop := models.Crop{
+		ID:         primitive.NewObjectID(),
+		Name:       r.FormValue("name"),
+		Price:      utils.ParseFloat(r.FormValue("price")),
+		Quantity:   utils.ParseInt(r.FormValue("quantity")),
+		Unit:       r.FormValue("unit"),
+		Notes:      r.FormValue("notes"),
+		Category:   r.FormValue("category"),
+		Featured:   r.FormValue("featured") == "true",
+		OutOfStock: r.FormValue("outOfStock") == "true",
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+		CropId:     formatted,
+	}
+
+	if d := utils.ParseDate(r.FormValue("harvestDate")); d != nil {
+		crop.HarvestDate = d
+	}
+	if d := utils.ParseDate(r.FormValue("expiryDate")); d != nil {
+		crop.ExpiryDate = d
+	}
+	return crop
+}
+
+// func AddCrop(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+// 	farmID, err := primitive.ObjectIDFromHex(ps.ByName("id"))
+// 	if err != nil {
+// 		utils.RespondWithJSON(w, http.StatusBadRequest, utils.M{"success": false, "message": "Invalid farm ID"})
+// 		return
+// 	}
+
+// 	if _, ok := getUserIDFromContext(r); !ok {
+// 		http.Error(w, "Invalid user", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	if err := r.ParseMultipartForm(10 << 20); err != nil {
+// 		utils.RespondWithJSON(w, http.StatusBadRequest, utils.M{"success": false, "message": "Invalid form"})
+// 		return
+// 	}
+
+// 	name := r.FormValue("name")
+// 	if name == "" {
+// 		utils.RespondWithJSON(w, http.StatusBadRequest, utils.M{"success": false, "message": "Name is required"})
+// 		return
+// 	}
+
+// 	crop := parseCropForm(r)
+// 	crop.FarmID = farmID
+
+// 	if imageURL, err := handleImageUpload(r, "image", "crops"); err == nil {
+// 		crop.ImageURL = imageURL
+// 	}
+
+// 	_, err = db.CropsCollection.InsertOne(context.Background(), crop)
+// 	if err != nil {
+// 		utils.RespondWithJSON(w, http.StatusInternalServerError, utils.M{"success": false, "message": "Insert failed"})
+// 		return
+// 	}
+
+// 	utils.RespondWithJSON(w, http.StatusOK, utils.M{"success": true, "cropId": crop.ID.Hex()})
+// }
+
+// func EditCrop(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+// 	cropID, err := primitive.ObjectIDFromHex(ps.ByName("cropid"))
+// 	if err != nil {
+// 		utils.RespondWithJSON(w, http.StatusBadRequest, utils.M{"success": false, "message": "Invalid crop ID"})
+// 		return
+// 	}
+
+// 	if _, ok := getUserIDFromContext(r); !ok {
+// 		http.Error(w, "Invalid user", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	r.ParseMultipartForm(10 << 20)
+// 	update := bson.M{
+// 		"name":       r.FormValue("name"),
+// 		"unit":       r.FormValue("unit"),
+// 		"price":      utils.ParseFloat(r.FormValue("price")),
+// 		"quantity":   utils.ParseInt(r.FormValue("quantity")),
+// 		"notes":      r.FormValue("notes"),
+// 		"category":   r.FormValue("category"),
+// 		"featured":   r.FormValue("featured") == "true",
+// 		"outOfStock": r.FormValue("outOfStock") == "true",
+// 		"updatedAt":  time.Now(),
+// 	}
+
+// 	if d := utils.ParseDate(r.FormValue("harvestDate")); d != nil {
+// 		update["harvestDate"] = d
+// 	}
+// 	if d := utils.ParseDate(r.FormValue("expiryDate")); d != nil {
+// 		update["expiryDate"] = d
+// 	}
+
+// 	if imageURL, err := handleImageUpload(r, "image", "crops"); err == nil {
+// 		update["imageUrl"] = imageURL
+// 	}
+
+// 	_, err = db.CropsCollection.UpdateOne(context.Background(), bson.M{"_id": cropID}, bson.M{"$set": update})
+// 	if err != nil {
+// 		utils.RespondWithJSON(w, http.StatusInternalServerError, utils.M{"success": false})
+// 		return
+// 	}
+
+// 	utils.RespondWithJSON(w, http.StatusOK, utils.M{"success": true})
+// }
 
 func DeleteCrop(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	cropID, err := primitive.ObjectIDFromHex(ps.ByName("cropid"))

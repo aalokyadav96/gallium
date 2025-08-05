@@ -3,8 +3,6 @@ package farms
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"regexp"
@@ -14,6 +12,7 @@ import (
 	"time"
 
 	"naevis/db"
+	"naevis/filemgr"
 	"naevis/globals"
 	"naevis/models"
 	"naevis/mq"
@@ -24,53 +23,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
-
-func CreateFarm(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	err := r.ParseMultipartForm(10 << 20)
-	if err != nil {
-		utils.RespondWithJSON(w, http.StatusBadRequest, utils.M{"success": false, "message": "Failed to parse form"})
-		return
-	}
-
-	// Retrieve user ID
-	requestingUserID, ok := r.Context().Value(globals.UserIDKey).(string)
-	if !ok {
-		http.Error(w, "Invalid user", http.StatusBadRequest)
-		return
-	}
-	farm := models.Farm{
-		FarmID:             primitive.NewObjectID(),
-		Name:               r.FormValue("name"),
-		Location:           r.FormValue("location"),
-		Description:        r.FormValue("description"),
-		Owner:              r.FormValue("owner"),
-		Contact:            r.FormValue("contact"),
-		AvailabilityTiming: r.FormValue("availabilityTiming"),
-		CreatedAt:          time.Now(),
-		UpdatedAt:          time.Now(),
-		Crops:              []models.Crop{},
-		CreatedBy:          requestingUserID,
-	}
-
-	if farm.Name == "" || farm.Location == "" || farm.Owner == "" || farm.Contact == "" {
-		utils.RespondWithJSON(w, http.StatusBadRequest, utils.M{"success": false, "message": "Missing required fields"})
-		return
-	}
-
-	if path, err := handleFarmPhotoUpload(r, farm.FarmID); err == nil {
-		farm.Photo = path
-	}
-
-	_, err = db.FarmsCollection.InsertOne(context.Background(), farm)
-	if err != nil {
-		utils.RespondWithJSON(w, http.StatusInternalServerError, utils.M{"success": false, "message": "Failed to insert farm"})
-		return
-	}
-
-	go mq.Emit("farm-created", mq.Index{EntityType: "farm", EntityId: farm.FarmID.String(), Method: "POST"})
-
-	utils.RespondWithJSON(w, http.StatusOK, utils.M{"success": true, "id": farm.FarmID.Hex()})
-}
 
 func GetFarm(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	id, err := primitive.ObjectIDFromHex(ps.ByName("id"))
@@ -106,28 +58,55 @@ func GetFarm(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		"farm":    farm,
 	})
 }
-func handleFarmPhotoUpload(r *http.Request, farmID primitive.ObjectID) (string, error) {
-	file, handler, err := r.FormFile("photo")
+func CreateFarm(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	err := r.ParseMultipartForm(10 << 20)
 	if err != nil {
-		return "", err
+		utils.RespondWithJSON(w, http.StatusBadRequest, utils.M{"success": false, "message": "Failed to parse form"})
+		return
 	}
-	defer file.Close()
 
-	os.MkdirAll("./static/uploads/farms", os.ModePerm)
-	filename := fmt.Sprintf("%s_%s", farmID.Hex(), handler.Filename)
-	filePath := "./static/uploads/farms/" + filename
-	out, err := os.Create(filePath)
+	requestingUserID, ok := r.Context().Value(globals.UserIDKey).(string)
+	if !ok {
+		http.Error(w, "Invalid user", http.StatusBadRequest)
+		return
+	}
+
+	farmID := primitive.NewObjectID()
+
+	farm := models.Farm{
+		FarmID:             farmID,
+		Name:               r.FormValue("name"),
+		Location:           r.FormValue("location"),
+		Description:        r.FormValue("description"),
+		Owner:              r.FormValue("owner"),
+		Contact:            r.FormValue("contact"),
+		AvailabilityTiming: r.FormValue("availabilityTiming"),
+		CreatedAt:          time.Now(),
+		UpdatedAt:          time.Now(),
+		Crops:              []models.Crop{},
+		CreatedBy:          requestingUserID,
+	}
+
+	if farm.Name == "" || farm.Location == "" || farm.Owner == "" || farm.Contact == "" {
+		utils.RespondWithJSON(w, http.StatusBadRequest, utils.M{"success": false, "message": "Missing required fields"})
+		return
+	}
+
+	fileName, err := filemgr.SaveFormFile(r.MultipartForm, "photo", filemgr.EntityFarm, filemgr.PictureMain, false)
+	if err == nil && fileName != "" {
+		farm.Photo = "/uploads/farms/" + fileName
+	}
+
+	_, err = db.FarmsCollection.InsertOne(context.Background(), farm)
 	if err != nil {
-		return "", err
+		utils.RespondWithJSON(w, http.StatusInternalServerError, utils.M{"success": false, "message": "Failed to insert farm"})
+		return
 	}
-	defer out.Close()
 
-	if _, err := io.Copy(out, file); err != nil {
-		return "", err
-	}
-	return "/uploads/farms/" + filename, nil
+	go mq.Emit("farm-created", mq.Index{EntityType: "farm", EntityId: farm.FarmID.Hex(), Method: "POST"})
+
+	utils.RespondWithJSON(w, http.StatusOK, utils.M{"success": true, "id": farm.FarmID.Hex()})
 }
-
 func EditFarm(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	farmID, err := primitive.ObjectIDFromHex(ps.ByName("id"))
 	if err != nil {
@@ -135,7 +114,6 @@ func EditFarm(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	// Retrieve user ID
 	requestingUserID, ok := r.Context().Value(globals.UserIDKey).(string)
 	if !ok {
 		http.Error(w, "Invalid user", http.StatusBadRequest)
@@ -143,6 +121,7 @@ func EditFarm(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	}
 
 	_ = requestingUserID
+
 	updateFields := bson.M{}
 	contentType := r.Header.Get("Content-Type")
 
@@ -162,10 +141,10 @@ func EditFarm(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		input.Contact = r.FormValue("contact")
 		input.AvailabilityTiming = r.FormValue("availabilityTiming")
 
-		if path, err := handleFarmPhotoUpload(r, farmID); err == nil {
-			updateFields["photo"] = path
+		fileName, err := filemgr.SaveFormFile(r.MultipartForm, "photo", filemgr.EntityFarm, filemgr.PictureMain, false)
+		if err == nil && fileName != "" {
+			updateFields["photo"] = "/uploads/farms/" + fileName
 		}
-
 	} else {
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 			utils.RespondWithJSON(w, http.StatusBadRequest, utils.M{"success": false, "message": "Invalid JSON body"})
@@ -173,7 +152,6 @@ func EditFarm(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		}
 	}
 
-	// Build update map
 	if input.Name != "" {
 		updateFields["name"] = input.Name
 	}
@@ -208,6 +186,288 @@ func EditFarm(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 	utils.RespondWithJSON(w, http.StatusOK, utils.M{"success": true, "message": "Farm updated"})
 }
+
+// func CreateFarm(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+// 	err := r.ParseMultipartForm(10 << 20)
+// 	if err != nil {
+// 		utils.RespondWithJSON(w, http.StatusBadRequest, utils.M{"success": false, "message": "Failed to parse form"})
+// 		return
+// 	}
+
+// 	requestingUserID, ok := r.Context().Value(globals.UserIDKey).(string)
+// 	if !ok {
+// 		http.Error(w, "Invalid user", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	farmID := primitive.NewObjectID()
+
+// 	farm := models.Farm{
+// 		FarmID:             farmID,
+// 		Name:               r.FormValue("name"),
+// 		Location:           r.FormValue("location"),
+// 		Description:        r.FormValue("description"),
+// 		Owner:              r.FormValue("owner"),
+// 		Contact:            r.FormValue("contact"),
+// 		AvailabilityTiming: r.FormValue("availabilityTiming"),
+// 		CreatedAt:          time.Now(),
+// 		UpdatedAt:          time.Now(),
+// 		Crops:              []models.Crop{},
+// 		CreatedBy:          requestingUserID,
+// 	}
+
+// 	if farm.Name == "" || farm.Location == "" || farm.Owner == "" || farm.Contact == "" {
+// 		utils.RespondWithJSON(w, http.StatusBadRequest, utils.M{"success": false, "message": "Missing required fields"})
+// 		return
+// 	}
+
+// 	// ⬇️ Save farm photo
+// 	fileName, err := filemgr.SaveFormFile(r, "photo", "./static/uploads/farms", false)
+// 	if err == nil && fileName != "" {
+// 		farm.Photo = "/uploads/farms/" + fileName
+// 	}
+
+// 	_, err = db.FarmsCollection.InsertOne(context.Background(), farm)
+// 	if err != nil {
+// 		utils.RespondWithJSON(w, http.StatusInternalServerError, utils.M{"success": false, "message": "Failed to insert farm"})
+// 		return
+// 	}
+
+// 	go mq.Emit("farm-created", mq.Index{EntityType: "farm", EntityId: farm.FarmID.Hex(), Method: "POST"})
+
+// 	utils.RespondWithJSON(w, http.StatusOK, utils.M{"success": true, "id": farm.FarmID.Hex()})
+// }
+
+// func EditFarm(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+// 	farmID, err := primitive.ObjectIDFromHex(ps.ByName("id"))
+// 	if err != nil {
+// 		utils.RespondWithJSON(w, http.StatusBadRequest, utils.M{"success": false, "message": "Invalid farm ID"})
+// 		return
+// 	}
+
+// 	requestingUserID, ok := r.Context().Value(globals.UserIDKey).(string)
+// 	if !ok {
+// 		http.Error(w, "Invalid user", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	_ = requestingUserID // no user-based filtering applied here
+
+// 	updateFields := bson.M{}
+// 	contentType := r.Header.Get("Content-Type")
+
+// 	var input models.Farm
+
+// 	if strings.HasPrefix(contentType, "multipart/form-data") {
+// 		err := r.ParseMultipartForm(10 << 20)
+// 		if err != nil {
+// 			utils.RespondWithJSON(w, http.StatusBadRequest, utils.M{"success": false, "message": "Malformed multipart data"})
+// 			return
+// 		}
+
+// 		input.Name = r.FormValue("name")
+// 		input.Location = r.FormValue("location")
+// 		input.Description = r.FormValue("description")
+// 		input.Owner = r.FormValue("owner")
+// 		input.Contact = r.FormValue("contact")
+// 		input.AvailabilityTiming = r.FormValue("availabilityTiming")
+
+// 		// ⬇️ Handle optional new photo
+// 		fileName, err := filemgr.SaveFormFile(r, "photo", "./static/uploads/farms", false)
+// 		if err == nil && fileName != "" {
+// 			updateFields["photo"] = "/uploads/farms/" + fileName
+// 		}
+// 	} else {
+// 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+// 			utils.RespondWithJSON(w, http.StatusBadRequest, utils.M{"success": false, "message": "Invalid JSON body"})
+// 			return
+// 		}
+// 	}
+
+// 	if input.Name != "" {
+// 		updateFields["name"] = input.Name
+// 	}
+// 	if input.Location != "" {
+// 		updateFields["location"] = input.Location
+// 	}
+// 	if input.Description != "" {
+// 		updateFields["description"] = input.Description
+// 	}
+// 	if input.Owner != "" {
+// 		updateFields["owner"] = input.Owner
+// 	}
+// 	if input.Contact != "" {
+// 		updateFields["contact"] = input.Contact
+// 	}
+// 	if input.AvailabilityTiming != "" {
+// 		updateFields["availabilityTiming"] = input.AvailabilityTiming
+// 	}
+
+// 	if len(updateFields) == 0 {
+// 		utils.RespondWithJSON(w, http.StatusBadRequest, utils.M{"success": false, "message": "No fields to update"})
+// 		return
+// 	}
+
+// 	updateFields["updatedAt"] = time.Now()
+
+// 	_, err = db.FarmsCollection.UpdateOne(r.Context(), bson.M{"_id": farmID}, bson.M{"$set": updateFields})
+// 	if err != nil {
+// 		utils.RespondWithJSON(w, http.StatusInternalServerError, utils.M{"success": false, "message": "Database error"})
+// 		return
+// 	}
+
+// 	utils.RespondWithJSON(w, http.StatusOK, utils.M{"success": true, "message": "Farm updated"})
+// }
+
+// func CreateFarm(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+// 	err := r.ParseMultipartForm(10 << 20)
+// 	if err != nil {
+// 		utils.RespondWithJSON(w, http.StatusBadRequest, utils.M{"success": false, "message": "Failed to parse form"})
+// 		return
+// 	}
+
+// 	// Retrieve user ID
+// 	requestingUserID, ok := r.Context().Value(globals.UserIDKey).(string)
+// 	if !ok {
+// 		http.Error(w, "Invalid user", http.StatusBadRequest)
+// 		return
+// 	}
+// 	farm := models.Farm{
+// 		FarmID:             primitive.NewObjectID(),
+// 		Name:               r.FormValue("name"),
+// 		Location:           r.FormValue("location"),
+// 		Description:        r.FormValue("description"),
+// 		Owner:              r.FormValue("owner"),
+// 		Contact:            r.FormValue("contact"),
+// 		AvailabilityTiming: r.FormValue("availabilityTiming"),
+// 		CreatedAt:          time.Now(),
+// 		UpdatedAt:          time.Now(),
+// 		Crops:              []models.Crop{},
+// 		CreatedBy:          requestingUserID,
+// 	}
+
+// 	if farm.Name == "" || farm.Location == "" || farm.Owner == "" || farm.Contact == "" {
+// 		utils.RespondWithJSON(w, http.StatusBadRequest, utils.M{"success": false, "message": "Missing required fields"})
+// 		return
+// 	}
+
+// 	if path, err := handleFarmPhotoUpload(r, farm.FarmID); err == nil {
+// 		farm.Photo = path
+// 	}
+
+// 	_, err = db.FarmsCollection.InsertOne(context.Background(), farm)
+// 	if err != nil {
+// 		utils.RespondWithJSON(w, http.StatusInternalServerError, utils.M{"success": false, "message": "Failed to insert farm"})
+// 		return
+// 	}
+
+// 	go mq.Emit("farm-created", mq.Index{EntityType: "farm", EntityId: farm.FarmID.String(), Method: "POST"})
+
+// 	utils.RespondWithJSON(w, http.StatusOK, utils.M{"success": true, "id": farm.FarmID.Hex()})
+// }
+
+// func handleFarmPhotoUpload(r *http.Request, farmID primitive.ObjectID) (string, error) {
+// 	file, handler, err := r.FormFile("photo")
+// 	if err != nil {
+// 		return "", err
+// 	}
+// 	defer file.Close()
+
+// 	os.MkdirAll("./static/uploads/farms", os.ModePerm)
+// 	filename := fmt.Sprintf("%s_%s", farmID.Hex(), handler.Filename)
+// 	filePath := "./static/uploads/farms/" + filename
+// 	out, err := os.Create(filePath)
+// 	if err != nil {
+// 		return "", err
+// 	}
+// 	defer out.Close()
+
+// 	if _, err := io.Copy(out, file); err != nil {
+// 		return "", err
+// 	}
+// 	return "/uploads/farms/" + filename, nil
+// }
+
+// func EditFarm(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+// 	farmID, err := primitive.ObjectIDFromHex(ps.ByName("id"))
+// 	if err != nil {
+// 		utils.RespondWithJSON(w, http.StatusBadRequest, utils.M{"success": false, "message": "Invalid farm ID"})
+// 		return
+// 	}
+
+// 	// Retrieve user ID
+// 	requestingUserID, ok := r.Context().Value(globals.UserIDKey).(string)
+// 	if !ok {
+// 		http.Error(w, "Invalid user", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	_ = requestingUserID
+// 	updateFields := bson.M{}
+// 	contentType := r.Header.Get("Content-Type")
+
+// 	var input models.Farm
+
+// 	if strings.HasPrefix(contentType, "multipart/form-data") {
+// 		err := r.ParseMultipartForm(10 << 20)
+// 		if err != nil {
+// 			utils.RespondWithJSON(w, http.StatusBadRequest, utils.M{"success": false, "message": "Malformed multipart data"})
+// 			return
+// 		}
+
+// 		input.Name = r.FormValue("name")
+// 		input.Location = r.FormValue("location")
+// 		input.Description = r.FormValue("description")
+// 		input.Owner = r.FormValue("owner")
+// 		input.Contact = r.FormValue("contact")
+// 		input.AvailabilityTiming = r.FormValue("availabilityTiming")
+
+// 		if path, err := handleFarmPhotoUpload(r, farmID); err == nil {
+// 			updateFields["photo"] = path
+// 		}
+
+// 	} else {
+// 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+// 			utils.RespondWithJSON(w, http.StatusBadRequest, utils.M{"success": false, "message": "Invalid JSON body"})
+// 			return
+// 		}
+// 	}
+
+// 	// Build update map
+// 	if input.Name != "" {
+// 		updateFields["name"] = input.Name
+// 	}
+// 	if input.Location != "" {
+// 		updateFields["location"] = input.Location
+// 	}
+// 	if input.Description != "" {
+// 		updateFields["description"] = input.Description
+// 	}
+// 	if input.Owner != "" {
+// 		updateFields["owner"] = input.Owner
+// 	}
+// 	if input.Contact != "" {
+// 		updateFields["contact"] = input.Contact
+// 	}
+// 	if input.AvailabilityTiming != "" {
+// 		updateFields["availabilityTiming"] = input.AvailabilityTiming
+// 	}
+
+// 	if len(updateFields) == 0 {
+// 		utils.RespondWithJSON(w, http.StatusBadRequest, utils.M{"success": false, "message": "No fields to update"})
+// 		return
+// 	}
+
+// 	updateFields["updatedAt"] = time.Now()
+
+// 	_, err = db.FarmsCollection.UpdateOne(r.Context(), bson.M{"_id": farmID}, bson.M{"$set": updateFields})
+// 	if err != nil {
+// 		utils.RespondWithJSON(w, http.StatusInternalServerError, utils.M{"success": false, "message": "Database error"})
+// 		return
+// 	}
+
+// 	utils.RespondWithJSON(w, http.StatusOK, utils.M{"success": true, "message": "Farm updated"})
+// }
 
 func DeleteFarm(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	farmID, err := primitive.ObjectIDFromHex(ps.ByName("id"))

@@ -1,0 +1,338 @@
+package filemgr
+
+import (
+	"bytes"
+	"fmt"
+	"image"
+	"image/jpeg"
+	"io"
+	"mime/multipart"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/disintegration/imaging"
+	"github.com/google/uuid"
+)
+
+type EntityType string
+type PictureType string
+
+const (
+	// Entity types
+	EntityArtist EntityType = "artist"
+	EntityUser   EntityType = "user"
+	EntityBaito  EntityType = "baito"
+	EntitySong   EntityType = "song"
+	EntityPost   EntityType = "post"
+	EntityChat   EntityType = "chat"
+	EntityEvent  EntityType = "event"
+	EntityFarm   EntityType = "farm"
+	EntityCrop   EntityType = "crop"
+
+	// Picture/File types
+	PicBanner   PictureType = "banner"
+	PicPhoto    PictureType = "photo"
+	PicSeating  PictureType = "seating"
+	PicMember   PictureType = "member"
+	PicThumb    PictureType = "thumb"
+	PicImage    PictureType = "image"
+	PicAudio    PictureType = "audio"
+	PicVideo    PictureType = "video"
+	PicDocument PictureType = "document"
+	PicFile     PictureType = "file"    // more generic fallback
+	PictureMain PictureType = PicBanner // alias for main display image
+)
+
+var AllowedExtensions = map[PictureType][]string{
+	PicImage:    {".jpg", ".jpeg", ".png", ".gif", ".webp"},
+	PicThumb:    {".jpg"},
+	PicPhoto:    {".jpg", ".jpeg", ".png"},
+	PicBanner:   {".jpg", ".jpeg", ".png"},
+	PicMember:   {".jpg", ".jpeg", ".png"},
+	PicSeating:  {".jpg", ".jpeg", ".png"},
+	PicAudio:    {".mp3", ".wav", ".aac"},
+	PicVideo:    {".mp4", ".mov", ".avi", ".webm"},
+	PicDocument: {".pdf", ".doc", ".docx", ".txt"},
+	PicFile:     {".pdf", ".doc", ".docx", ".jpg", ".jpeg", ".png", ".mp3", ".mp4"}, // fallback catch-all
+}
+
+var AllowedMIMEs = map[PictureType][]string{
+	PicImage:    {"image/jpeg", "image/png", "image/gif", "image/webp"},
+	PicThumb:    {"image/jpeg"},
+	PicPhoto:    {"image/jpeg", "image/png"},
+	PicBanner:   {"image/jpeg", "image/png"},
+	PicMember:   {"image/jpeg", "image/png"},
+	PicSeating:  {"image/jpeg", "image/png"},
+	PicAudio:    {"audio/mpeg", "audio/wav", "audio/aac"},
+	PicVideo:    {"video/mp4", "video/quicktime", "video/x-msvideo", "video/webm"},
+	PicDocument: {"application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/plain"},
+	PicFile: {
+		"application/pdf", "application/msword",
+		"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+		"image/jpeg", "image/png",
+		"audio/mpeg", "video/mp4",
+	},
+}
+
+// type EntityType string
+// type PictureType string
+
+// const (
+// 	// Entity types
+// 	EntityArtist EntityType = "artist"
+// 	EntityUser   EntityType = "user"
+// 	EntityBaito  EntityType = "baito"
+// 	EntitySong   EntityType = "song"
+// 	EntityPost   EntityType = "post"
+// 	EntityChat   EntityType = "chat"
+// 	EntityEvent  EntityType = "event"
+// 	EntityFarm   EntityType = "farm"
+// 	EntityCrop   EntityType = "crop"
+
+// 	// Picture/File types
+// 	PicSeating  PictureType = "seating"
+// 	PicBanner   PictureType = "banner"
+// 	PicPhoto    PictureType = "photo"
+// 	PicMember   PictureType = "member"
+// 	PicThumb    PictureType = "thumb"
+// 	PicImage    PictureType = "image"
+// 	PicAudio    PictureType = "audio"
+// 	PicDocument PictureType = "document"
+// 	PicVideo    PictureType = "video"
+// 	PicFile     PictureType = "document"
+// 	PictureMain PictureType = "banner"
+// )
+
+// var AllowedExtensions = map[PictureType][]string{
+// 	PicImage:    {".jpg", ".jpeg", ".png", ".gif"},
+// 	PicThumb:    {".jpg"},
+// 	PicAudio:    {".mp3", ".wav"},
+// 	PicVideo:    {".mp4", ".mov"},
+// 	PicDocument: {".pdf", ".doc", ".docx"},
+// }
+
+// var AllowedMIMEs = map[PictureType][]string{
+// 	PicImage:    {"image/jpeg", "image/png", "image/gif"},
+// 	PicThumb:    {"image/jpeg"},
+// 	PicAudio:    {"audio/mpeg", "audio/wav"},
+// 	PicVideo:    {"video/mp4", "video/quicktime"},
+// 	PicDocument: {"application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+// }
+
+// Optional logging function (plug in your logger)
+var LogFunc func(path string, size int64, mimeType string)
+
+func SaveFile(reader io.Reader, header *multipart.FileHeader, destDir string, maxSize int64, customNameFn func(original string) string) (string, error) {
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	picType := detectPicType(destDir)
+
+	if !isExtensionAllowed(ext, picType) {
+		return "", fmt.Errorf("file extension %s is not allowed for %s", ext, picType)
+	}
+
+	buf, err := io.ReadAll(io.LimitReader(reader, maxSize+1))
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", header.Filename, err)
+	}
+	if maxSize > 0 && int64(len(buf)) > maxSize {
+		return "", fmt.Errorf("file size exceeds limit: %d > %d", len(buf), maxSize)
+	}
+
+	mimeType := detectMIMEType(buf)
+	if !isMIMEAllowed(mimeType, picType) {
+		return "", fmt.Errorf("MIME type %s not allowed for %s", mimeType, picType)
+	}
+
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return "", fmt.Errorf("mkdir %s: %w", destDir, err)
+	}
+
+	filename := ""
+	if customNameFn != nil {
+		filename = strings.TrimSpace(customNameFn(header.Filename))
+	}
+	if filename == "" {
+		filename = uuid.New().String() + ext
+	} else {
+		filename = ensureSafeFilename(filename, ext)
+	}
+
+	fullPath := filepath.Join(destDir, filename)
+	out, err := os.Create(fullPath)
+	if err != nil {
+		return "", fmt.Errorf("create %s: %w", fullPath, err)
+	}
+	defer out.Close()
+
+	if _, err := out.Write(buf); err != nil {
+		return "", fmt.Errorf("write %s: %w", fullPath, err)
+	}
+
+	if LogFunc != nil {
+		LogFunc(fullPath, int64(len(buf)), mimeType)
+	}
+
+	return filename, nil
+}
+
+func SaveFileForEntity(file multipart.File, header *multipart.FileHeader, entity EntityType, picType PictureType) (string, error) {
+	defer file.Close()
+	dest := ResolvePath(entity, picType)
+	return SaveFile(file, header, dest, 10<<20, nil)
+}
+
+func SaveFormFile(r *multipart.Form, formKey string, entity EntityType, picType PictureType, required bool) (string, error) {
+	files := r.File[formKey]
+	if len(files) == 0 {
+		if required {
+			return "", fmt.Errorf("missing required file: %s", formKey)
+		}
+		return "", nil
+	}
+	file, err := files[0].Open()
+	if err != nil {
+		return "", fmt.Errorf("open %s: %w", formKey, err)
+	}
+	return SaveFileForEntity(file, files[0], entity, picType)
+}
+
+func SaveFormFiles(r *multipart.Form, formKey string, entity EntityType, picType PictureType, required bool) ([]string, error) {
+	files := r.File[formKey]
+	if len(files) == 0 {
+		if required {
+			return nil, fmt.Errorf("missing required files: %s", formKey)
+		}
+		return nil, nil
+	}
+
+	var saved []string
+	var errs []string
+
+	for _, hdr := range files {
+		file, err := hdr.Open()
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("open %s: %v", hdr.Filename, err))
+			continue
+		}
+		name, err := SaveFileForEntity(file, hdr, entity, picType)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("save %s: %v", hdr.Filename, err))
+			continue
+		}
+		saved = append(saved, name)
+	}
+
+	if len(errs) > 0 {
+		return saved, fmt.Errorf("partial errors: %s", strings.Join(errs, "; "))
+	}
+	return saved, nil
+}
+
+func SaveImageWithThumb(file multipart.File, header *multipart.FileHeader, entity EntityType, picType PictureType, thumbWidth int) (string, string, error) {
+	defer file.Close()
+
+	buf, err := io.ReadAll(file)
+	if err != nil {
+		return "", "", fmt.Errorf("read file: %w", err)
+	}
+
+	img, format, err := image.Decode(bytes.NewReader(buf))
+	if err != nil {
+		return "", "", fmt.Errorf("decode %s: %w", header.Filename, err)
+	}
+	_ = format
+
+	if err := ValidateImageDimensions(img, 3000, 3000); err != nil {
+		return "", "", err
+	}
+
+	origName, err := SaveFile(bytes.NewReader(buf), header, ResolvePath(entity, picType), 10<<20, nil)
+	if err != nil {
+		return "", "", err
+	}
+
+	thumbImg := imaging.Resize(img, thumbWidth, 0, imaging.Lanczos)
+	thumbName := uuid.New().String() + ".jpg"
+	thumbDir := ResolvePath(entity, PicThumb)
+
+	if err := os.MkdirAll(thumbDir, 0o755); err != nil {
+		return origName, "", fmt.Errorf("mkdir %s: %w", thumbDir, err)
+	}
+
+	thumbPath := filepath.Join(thumbDir, thumbName)
+	out, err := os.Create(thumbPath)
+	if err != nil {
+		return origName, "", fmt.Errorf("create %s: %w", thumbPath, err)
+	}
+	defer out.Close()
+
+	if err := jpeg.Encode(out, thumbImg, &jpeg.Options{Quality: 85}); err != nil {
+		return origName, "", fmt.Errorf("encode thumb: %w", err)
+	}
+
+	if LogFunc != nil {
+		LogFunc(thumbPath, 0, "image/jpeg")
+	}
+
+	return origName, thumbName, nil
+}
+
+// ValidateImageDimensions enforces image size limits
+func ValidateImageDimensions(img image.Image, maxW, maxH int) error {
+	b := img.Bounds()
+	if b.Dx() > maxW || b.Dy() > maxH {
+		return fmt.Errorf("image dimensions exceed limit: %dx%d > %dx%d", b.Dx(), b.Dy(), maxW, maxH)
+	}
+	return nil
+}
+
+func ResolvePath(entity EntityType, picType PictureType) string {
+	return filepath.Join("static", "uploads", strings.ToLower(string(entity)), strings.ToLower(string(picType)))
+}
+
+func detectPicType(destDir string) PictureType {
+	parts := strings.Split(destDir, string(os.PathSeparator))
+	if len(parts) == 0 {
+		return ""
+	}
+	return PictureType(strings.ToLower(parts[len(parts)-1]))
+}
+
+func isExtensionAllowed(ext string, picType PictureType) bool {
+	allowed, ok := AllowedExtensions[picType]
+	if !ok {
+		return false
+	}
+	for _, a := range allowed {
+		if ext == a {
+			return true
+		}
+	}
+	return false
+}
+
+func isMIMEAllowed(mimeType string, picType PictureType) bool {
+	allowed, ok := AllowedMIMEs[picType]
+	if !ok {
+		return false
+	}
+	for _, a := range allowed {
+		if mimeType == a {
+			return true
+		}
+	}
+	return false
+}
+
+// detectMIMEType inspects first 512 bytes to guess MIME
+func detectMIMEType(buf []byte) string {
+	return http.DetectContentType(buf[:512])
+}
+
+func ensureSafeFilename(name, ext string) string {
+	name = strings.TrimSuffix(name, filepath.Ext(name))
+	name = strings.ReplaceAll(name, " ", "_")
+	return name + ext
+}

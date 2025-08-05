@@ -3,18 +3,14 @@ package discord
 
 import (
 	"encoding/json"
-	"fmt"
-	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"naevis/db"
+	"naevis/filemgr"
 	"naevis/utils"
 
-	"github.com/google/uuid"
 	"github.com/julienschmidt/httprouter"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -31,46 +27,31 @@ func UploadAttachment(w http.ResponseWriter, r *http.Request, ps httprouter.Para
 		return
 	}
 
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		writeErr(w, "failed to read file", http.StatusBadRequest)
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		writeErr(w, "invalid form", http.StatusBadRequest)
 		return
 	}
-	defer file.Close()
 
-	contentType := header.Header.Get("Content-Type")
+	contentType := ""
+	if r.MultipartForm != nil && r.MultipartForm.File != nil {
+		files := r.MultipartForm.File["file"]
+		if len(files) > 0 {
+			contentType = files[0].Header.Get("Content-Type")
+		}
+	}
+
 	if !strings.HasPrefix(contentType, "image/") && !strings.HasPrefix(contentType, "application/") {
 		writeErr(w, "unsupported file type", http.StatusBadRequest)
 		return
 	}
 
-	uploadDir := "static/uploads/farmchat"
-	if err := os.MkdirAll(uploadDir, os.ModePerm); err != nil {
-		writeErr(w, "cannot create upload dir", http.StatusInternalServerError)
-		return
-	}
-
-	ext := filepath.Ext(header.Filename)
-	fname := fmt.Sprintf("%s%s", uuid.New().String(), ext)
-	destPath := filepath.Join(uploadDir, fname)
-
-	out, err := os.Create(destPath)
+	savedPath, err := filemgr.SaveFormFile(r.MultipartForm, "file", filemgr.EntityChat, filemgr.PicFile, false)
 	if err != nil {
 		writeErr(w, "cannot save file", http.StatusInternalServerError)
 		return
 	}
-	defer out.Close()
 
-	if _, err := io.Copy(out, file); err != nil {
-		writeErr(w, "error writing file", http.StatusInternalServerError)
-		return
-	}
-
-	// url := fmt.Sprintf("/static/uploads/farmchat/%s", fname)
-
-	// Save as media message (empty text, media attached)
-	// msg, err := persistMessage(chatID, user, "", fname, contentType)
-	msg, err := persistMediaMessage(chatID, user, fname, contentType)
+	msg, err := persistMediaMessage(chatID, user, savedPath, contentType)
 	if err != nil {
 		writeErr(w, "failed to persist message", http.StatusInternalServerError)
 		return
@@ -102,46 +83,82 @@ func UploadAttachment(w http.ResponseWriter, r *http.Request, ps httprouter.Para
 // 		return
 // 	}
 
+// 	// Save using filemgr
 // 	uploadDir := "static/uploads/farmchat"
-// 	if err := os.MkdirAll(uploadDir, os.ModePerm); err != nil {
-// 		writeErr(w, "cannot create upload dir", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	ext := filepath.Ext(header.Filename)
-// 	fname := fmt.Sprintf("%s%s", uuid.New().String(), ext)
-// 	destPath := filepath.Join(uploadDir, fname)
-
-// 	out, err := os.Create(destPath)
+// 	fileName, err := filemgr.SaveFile(file, header, uploadDir)
 // 	if err != nil {
 // 		writeErr(w, "cannot save file", http.StatusInternalServerError)
 // 		return
 // 	}
-// 	defer out.Close()
 
-// 	if _, err := io.Copy(out, file); err != nil {
-// 		writeErr(w, "error writing file", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	url := fmt.Sprintf("/static/uploads/farmchat/%s", fname)
-// 	msg, err := persistMessage(chatID, user, url)
+// 	// Persist the media message
+// 	msg, err := persistMediaMessage(chatID, user, fileName, contentType)
 // 	if err != nil {
 // 		writeErr(w, "failed to persist message", http.StatusInternalServerError)
 // 		return
 // 	}
 
-// 	resp := map[string]interface{}{
-// 		"id":      msg.ID.Hex(),
-// 		"url":     url,
-// 		"type":    contentType,
-// 		"created": msg.CreatedAt,
-// 		"sender":  msg.Sender,
-// 	}
-// 	json.NewEncoder(w).Encode(resp)
+// 	w.Header().Set("Content-Type", "application/json")
+// 	json.NewEncoder(w).Encode(msg)
 // }
 
-// (continue with other REST functions like GetUserChats, GetChatMessages, etc.)
+// // func UploadAttachment(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+// // 	user := utils.GetUserIDFromRequest(r)
+// // 	chatIDHex := ps.ByName("chatId")
+// // 	chatID, err := primitive.ObjectIDFromHex(chatIDHex)
+// // 	if err != nil {
+// // 		writeErr(w, "invalid chatId", http.StatusBadRequest)
+// // 		return
+// // 	}
+
+// // 	file, header, err := r.FormFile("file")
+// // 	if err != nil {
+// // 		writeErr(w, "failed to read file", http.StatusBadRequest)
+// // 		return
+// // 	}
+// // 	defer file.Close()
+
+// // 	contentType := header.Header.Get("Content-Type")
+// // 	if !strings.HasPrefix(contentType, "image/") && !strings.HasPrefix(contentType, "application/") {
+// // 		writeErr(w, "unsupported file type", http.StatusBadRequest)
+// // 		return
+// // 	}
+
+// // 	uploadDir := "static/uploads/farmchat"
+// // 	if err := os.MkdirAll(uploadDir, os.ModePerm); err != nil {
+// // 		writeErr(w, "cannot create upload dir", http.StatusInternalServerError)
+// // 		return
+// // 	}
+
+// // 	ext := filepath.Ext(header.Filename)
+// // 	fname := fmt.Sprintf("%s%s", uuid.New().String(), ext)
+// // 	destPath := filepath.Join(uploadDir, fname)
+
+// // 	out, err := os.Create(destPath)
+// // 	if err != nil {
+// // 		writeErr(w, "cannot save file", http.StatusInternalServerError)
+// // 		return
+// // 	}
+// // 	defer out.Close()
+
+// // 	if _, err := io.Copy(out, file); err != nil {
+// // 		writeErr(w, "error writing file", http.StatusInternalServerError)
+// // 		return
+// // 	}
+
+// // 	// url := fmt.Sprintf("/static/uploads/farmchat/%s", fname)
+
+// // 	// Save as media message (empty text, media attached)
+// // 	// msg, err := persistMessage(chatID, user, "", fname, contentType)
+// // 	msg, err := persistMediaMessage(chatID, user, fname, contentType)
+// // 	if err != nil {
+// // 		writeErr(w, "failed to persist message", http.StatusInternalServerError)
+// // 		return
+// // 	}
+
+// // 	w.Header().Set("Content-Type", "application/json")
+// // 	json.NewEncoder(w).Encode(msg)
+// // }
 
 func GetUserChats(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	user := utils.GetUserIDFromRequest(r)
@@ -227,57 +244,6 @@ func StartNewChat(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(chat)
 }
-
-// func StartNewChat(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-// 	user := utils.GetUserIDFromRequest(r)
-// 	var body struct{ Participants []string }
-// 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-// 		http.Error(w, "invalid body", 400)
-// 		return
-// 	}
-// 	// ensure the requesting user is in the participants list
-// 	found := false
-// 	for _, p := range body.Participants {
-// 		if p == user {
-// 			found = true
-// 			break
-// 		}
-// 	}
-// 	if !found {
-// 		http.Error(w, "must include yourself", 400)
-// 		return
-// 	}
-// 	// check existing chat
-// 	filter := bson.M{"participants": bson.M{"$all": body.Participants}}
-// 	var existing Chat
-// 	err := db.ChatsCollection.FindOne(ctx, filter).Decode(&existing)
-// 	if err == nil {
-// 		w.Header().Set("Content-Type", "application/json")
-// 		json.NewEncoder(w).Encode(existing)
-// 		return
-// 	}
-// 	if err != mongo.ErrNoDocuments {
-// 		http.Error(w, err.Error(), 500)
-// 		return
-// 	}
-// 	// create new chat
-// 	now := time.Now()
-// 	chat := Chat{
-// 		Participants: body.Participants,
-// 		CreatedAt:    now,
-// 		UpdatedAt:    now,
-// 		EntityType:   "fgjdfg",
-// 		EntityId:     "dfghg",
-// 	}
-// 	res, err := db.ChatsCollection.InsertOne(ctx, chat)
-// 	if err != nil {
-// 		http.Error(w, err.Error(), 500)
-// 		return
-// 	}
-// 	chat.ID = res.InsertedID.(primitive.ObjectID)
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(chat)
-// }
 
 func GetChatByID(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	chatID, err := primitive.ObjectIDFromHex(ps.ByName("chatId"))

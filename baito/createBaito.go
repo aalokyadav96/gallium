@@ -3,12 +3,7 @@ package baito
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"io"
-	"mime/multipart"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -22,85 +17,151 @@ import (
 	"naevis/utils"
 )
 
-// CreateBaito handles POST /api/baitos/baito
-func CreateBaito(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	if err := r.ParseMultipartForm(20 << 20); err != nil {
-		http.Error(w, "Invalid form", http.StatusBadRequest)
-		return
-	}
+// func CreateBaito(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+// 	if err := r.ParseMultipartForm(20 << 20); err != nil {
+// 		http.Error(w, "Invalid form", http.StatusBadRequest)
+// 		return
+// 	}
 
-	// gather and trim
-	title := strings.TrimSpace(r.FormValue("title"))
-	description := strings.TrimSpace(r.FormValue("description"))
-	category := strings.TrimSpace(r.FormValue("category"))
-	subcategory := strings.TrimSpace(r.FormValue("subcategory"))
-	location := strings.TrimSpace(r.FormValue("location"))
-	wage := strings.TrimSpace(r.FormValue("wage"))
-	phone := strings.TrimSpace(r.FormValue("phone"))
-	requirements := strings.TrimSpace(r.FormValue("requirements"))
-	workHours := strings.TrimSpace(r.FormValue("workHours"))
+// 	b := models.Baito{
+// 		Title:        r.FormValue("title"),
+// 		Description:  r.FormValue("description"),
+// 		Category:     r.FormValue("category"),
+// 		SubCategory:  r.FormValue("subcategory"),
+// 		Location:     r.FormValue("location"),
+// 		Wage:         r.FormValue("wage"),
+// 		Phone:        r.FormValue("phone"),
+// 		Requirements: r.FormValue("requirements"),
+// 		WorkHours:    r.FormValue("workHours"),
+// 		CreatedAt:    time.Now(),
+// 		OwnerID:      utils.GetUserIDFromRequest(r),
+// 	}
 
-	// require all
-	if title == "" || description == "" || category == "" ||
-		subcategory == "" || location == "" || wage == "" ||
-		phone == "" || requirements == "" || workHours == "" {
-		http.Error(w, "Missing required fields", http.StatusBadRequest)
-		return
-	}
+// 	if bannerHeaders, ok := r.MultipartForm.File["banner"]; ok && len(bannerHeaders) > 0 {
+// 		if url, err := filemgr.SaveFile(bannerHeaders, "baitos"); err == nil {
+// 			b.BannerURL = url
+// 		}
+// 	}
 
-	// optional banner
-	var bannerURL string
-	if fhArr, ok := r.MultipartForm.File["banner"]; ok && len(fhArr) > 0 {
-		url, err := saveUploadedFile(fhArr[0])
-		if err != nil {
-			http.Error(w, "Banner upload failed", http.StatusInternalServerError)
-			return
-		}
-		bannerURL = url
-	}
+// 	if images, ok := r.MultipartForm.File["images"]; ok && len(images) > 0 {
+// 		imgList, _ := filemgr.SaveMultipleFiles(images, "baitos")
+// 		b.Images = imgList
+// 	}
 
-	// optional multiple images
-	var imageURLs []string
-	if imageFiles, ok := r.MultipartForm.File["images"]; ok {
-		for _, fileHeader := range imageFiles {
-			url, err := saveUploadedFile(fileHeader)
-			if err != nil {
-				http.Error(w, "Image upload failed", http.StatusInternalServerError)
-				return
-			}
-			imageURLs = append(imageURLs, url)
-		}
-	}
+// 	res, err := db.BaitoCollection.InsertOne(context.TODO(), b)
+// 	if err != nil {
+// 		http.Error(w, "Failed to save baito", http.StatusInternalServerError)
+// 		return
+// 	}
+// 	b.ID = res.InsertedID.(primitive.ObjectID)
 
-	// build model, including OwnerID
-	b := models.Baito{
-		Title:        title,
-		Description:  description,
-		Category:     category,
-		SubCategory:  subcategory,
-		Location:     location,
-		Wage:         wage,
-		Phone:        phone,
-		Requirements: requirements,
-		WorkHours:    workHours,
-		BannerURL:    bannerURL,
-		Images:       imageURLs,
-		CreatedAt:    time.Now(),
-		OwnerID:      utils.GetUserIDFromRequest(r),
-	}
+// 	utils.RespondWithJSON(w, http.StatusOK, utils.M{"baitoid": b.ID.Hex()})
+// }
 
-	res, err := db.BaitoCollection.InsertOne(context.TODO(), b)
-	if err != nil {
-		http.Error(w, "Failed to save baito", http.StatusInternalServerError)
-		return
-	}
-	b.ID = res.InsertedID.(primitive.ObjectID)
+// // // CreateBaito handles POST /api/baitos/baito
+// // func CreateBaito(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+// // 	if err := r.ParseMultipartForm(20 << 20); err != nil {
+// // 		http.Error(w, "Invalid form", http.StatusBadRequest)
+// // 		return
+// // 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"baitoid": b.ID.Hex(),
-	})
-}
+// // 	// gather and trim
+// // 	title := strings.TrimSpace(r.FormValue("title"))
+// // 	description := strings.TrimSpace(r.FormValue("description"))
+// // 	category := strings.TrimSpace(r.FormValue("category"))
+// // 	subcategory := strings.TrimSpace(r.FormValue("subcategory"))
+// // 	location := strings.TrimSpace(r.FormValue("location"))
+// // 	wage := strings.TrimSpace(r.FormValue("wage"))
+// // 	phone := strings.TrimSpace(r.FormValue("phone"))
+// // 	requirements := strings.TrimSpace(r.FormValue("requirements"))
+// // 	workHours := strings.TrimSpace(r.FormValue("workHours"))
+
+// // 	// require all
+// // 	if title == "" || description == "" || category == "" ||
+// // 		subcategory == "" || location == "" || wage == "" ||
+// // 		phone == "" || requirements == "" || workHours == "" {
+// // 		http.Error(w, "Missing required fields", http.StatusBadRequest)
+// // 		return
+// // 	}
+
+// // 	// optional banner
+// // 	var bannerURL string
+// // 	if fhArr, ok := r.MultipartForm.File["banner"]; ok && len(fhArr) > 0 {
+// // 		url, err := saveUploadedFile(fhArr[0])
+// // 		if err != nil {
+// // 			http.Error(w, "Banner upload failed", http.StatusInternalServerError)
+// // 			return
+// // 		}
+// // 		bannerURL = url
+// // 	}
+
+// // 	// optional multiple images
+// // 	var imageURLs []string
+// // 	if imageFiles, ok := r.MultipartForm.File["images"]; ok {
+// // 		for _, fileHeader := range imageFiles {
+// // 			url, err := saveUploadedFile(fileHeader)
+// // 			if err != nil {
+// // 				http.Error(w, "Image upload failed", http.StatusInternalServerError)
+// // 				return
+// // 			}
+// // 			imageURLs = append(imageURLs, url)
+// // 		}
+// // 	}
+
+// // 	// build model, including OwnerID
+// // 	b := models.Baito{
+// // 		Title:        title,
+// // 		Description:  description,
+// // 		Category:     category,
+// // 		SubCategory:  subcategory,
+// // 		Location:     location,
+// // 		Wage:         wage,
+// // 		Phone:        phone,
+// // 		Requirements: requirements,
+// // 		WorkHours:    workHours,
+// // 		BannerURL:    bannerURL,
+// // 		Images:       imageURLs,
+// // 		CreatedAt:    time.Now(),
+// // 		OwnerID:      utils.GetUserIDFromRequest(r),
+// // 	}
+
+// // 	res, err := db.BaitoCollection.InsertOne(context.TODO(), b)
+// // 	if err != nil {
+// // 		http.Error(w, "Failed to save baito", http.StatusInternalServerError)
+// // 		return
+// // 	}
+// // 	b.ID = res.InsertedID.(primitive.ObjectID)
+
+// // 	w.Header().Set("Content-Type", "application/json")
+// // 	json.NewEncoder(w).Encode(map[string]string{
+// // 		"baitoid": b.ID.Hex(),
+// // 	})
+// // }
+
+// // // helper: save file
+// // func saveUploadedFile(fh *multipart.FileHeader) (string, error) {
+// // 	src, err := fh.Open()
+// // 	if err != nil {
+// // 		return "", err
+// // 	}
+// // 	defer src.Close()
+
+// // 	ext := filepath.Ext(fh.Filename)
+// // 	name := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
+// // 	dstPath := filepath.Join("static", "uploads", "baitos", name)
+
+// // 	dst, err := os.Create(dstPath)
+// // 	if err != nil {
+// // 		return "", err
+// // 	}
+// // 	defer dst.Close()
+
+// // 	if _, err = io.Copy(dst, src); err != nil {
+// // 		return "", err
+// // 	}
+// // 	// return "/uploads/baitos/" + name, nil
+// // 	return name, nil
+// // }
 
 // GetLatestBaitos handles GET /api/baitos/latest
 func GetLatestBaitos(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
@@ -262,67 +323,6 @@ func GetBaitoApplicants(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 	json.NewEncoder(w).Encode(apps)
 }
 
-// func GetMyApplications(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-// 	userID := utils.GetUserIDFromRequest(r)
-
-// 	cursor, err := db.BaitoApplicationsCollection.Find(context.TODO(),
-// 		bson.M{"userid": userID})
-// 	if err != nil {
-// 		http.Error(w, "Database error", http.StatusInternalServerError)
-// 		return
-// 	}
-// 	defer cursor.Close(context.TODO())
-
-// 	var apps []models.BaitoApplication
-// 	if err := cursor.All(context.TODO(), &apps); err != nil {
-// 		http.Error(w, "Decode error", http.StatusInternalServerError)
-// 		return
-// 	}
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(apps)
-// }
-
-// // func GetMyApplications(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-// // 	userID := utils.GetUserIDFromRequest(r) // returns string
-// // 	match := bson.D{{Key: "$match", Value: bson.D{{Key: "userid", Value: userID}}}}
-
-// // 	lookup := bson.D{{Key: "$lookup", Value: bson.D{
-// // 		{Key: "from", Value: "baitos"},
-// // 		{Key: "localField", Value: "baitoId"},
-// // 		{Key: "foreignField", Value: "_id"},
-// // 		{Key: "as", Value: "job"},
-// // 	}}}
-
-// // 	unwind := bson.D{{Key: "$unwind", Value: "$job"}}
-
-// // 	project := bson.D{{Key: "$project", Value: bson.D{
-// // 		{Key: "_id", Value: 1},
-// // 		{Key: "pitch", Value: 1},
-// // 		{Key: "submittedAt", Value: 1},
-// // 		{Key: "jobId", Value: "$job._id"},
-// // 		{Key: "title", Value: "$job.title"},
-// // 		{Key: "location", Value: "$job.location"},
-// // 		{Key: "wage", Value: "$job.wage"},
-// // 	}}}
-
-// // 	cursor, err := db.BaitoApplicationsCollection.Aggregate(context.TODO(),
-// // 		mongo.Pipeline{match, lookup, unwind, project})
-// // 	if err != nil {
-// // 		http.Error(w, "Failed to fetch applications", http.StatusInternalServerError)
-// // 		return
-// // 	}
-// // 	defer cursor.Close(context.TODO())
-
-// // 	var results []bson.M
-// // 	if err := cursor.All(context.TODO(), &results); err != nil {
-// // 		http.Error(w, "Decode error", http.StatusInternalServerError)
-// // 		return
-// // 	}
-
-// // 	w.Header().Set("Content-Type", "application/json")
-// // 	json.NewEncoder(w).Encode(results)
-// // }
-
 func GetMyApplications(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	userID := utils.GetUserIDFromRequest(r)
 
@@ -370,29 +370,4 @@ func GetMyApplications(w http.ResponseWriter, r *http.Request, _ httprouter.Para
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(results)
-}
-
-// helper: save file
-func saveUploadedFile(fh *multipart.FileHeader) (string, error) {
-	src, err := fh.Open()
-	if err != nil {
-		return "", err
-	}
-	defer src.Close()
-
-	ext := filepath.Ext(fh.Filename)
-	name := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
-	dstPath := filepath.Join("static", "uploads", "baitos", name)
-
-	dst, err := os.Create(dstPath)
-	if err != nil {
-		return "", err
-	}
-	defer dst.Close()
-
-	if _, err = io.Copy(dst, src); err != nil {
-		return "", err
-	}
-	// return "/uploads/baitos/" + name, nil
-	return name, nil
 }

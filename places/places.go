@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"naevis/autocom"
 	"naevis/db"
+	"naevis/filemgr"
 	"naevis/globals"
 	"naevis/mq"
 	"naevis/rdx"
@@ -14,7 +14,6 @@ import (
 	"naevis/userdata"
 	"naevis/utils"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -24,7 +23,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-var bannerDir string = "./static/placepic"
+// var bannerDir string = "./static/placepic"
 
 func GetPlaces(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	w.Header().Set("Content-Type", "application/json")
@@ -144,52 +143,66 @@ func GetPlaceQ(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	}
 }
 
-// Handles file upload and returns the banner file name
-func handleBannerUpload(w http.ResponseWriter, r *http.Request, placeID string) (string, error) {
-	bannerFile, header, err := r.FormFile("banner")
-	if err != nil {
-		if err == http.ErrMissingFile {
-			return "", nil // No file uploaded, continue without it
-		}
-		return "", fmt.Errorf("error retrieving banner file")
-	}
-	defer bannerFile.Close()
+// // Handles file upload and returns the banner file name
+// func handleBannerUpload(w http.ResponseWriter, r *http.Request, placeID string) (string, error) {
+// 	bannerFile, header, err := r.FormFile("banner")
+// 	if err != nil {
+// 		if err == http.ErrMissingFile {
+// 			return "", nil // No file uploaded, continue without it
+// 		}
+// 		return "", fmt.Errorf("error retrieving banner file")
+// 	}
+// 	defer bannerFile.Close()
 
-	if !utils.ValidateImageFileType(w, header) {
-		return "", fmt.Errorf("invalid banner file type. Only jpeg, png, webp, gif, bmp, tiff are allowed")
-	}
+// 	if !utils.ValidateImageFileType(w, header) {
+// 		return "", fmt.Errorf("invalid banner file type. Only jpeg, png, webp, gif, bmp, tiff are allowed")
+// 	}
 
-	// Ensure the directory exists
-	// bannerDir := "./static/placepic"
-	if err := os.MkdirAll(bannerDir, os.ModePerm); err != nil {
-		return "", fmt.Errorf("error creating directory for banner")
-	}
+// 	// Ensure the directory exists
+// 	// bannerDir := "./static/placepic"
+// 	if err := os.MkdirAll(bannerDir, os.ModePerm); err != nil {
+// 		return "", fmt.Errorf("error creating directory for banner")
+// 	}
 
-	// Save the banner image
-	bannerPath := fmt.Sprintf("%s/%s.jpg", bannerDir, placeID)
-	out, err := os.Create(bannerPath)
-	if err != nil {
-		return "", fmt.Errorf("error saving banner")
-	}
-	defer out.Close()
+// 	// Save the banner image
+// 	bannerPath := fmt.Sprintf("%s/%s.jpg", bannerDir, placeID)
+// 	out, err := os.Create(bannerPath)
+// 	if err != nil {
+// 		return "", fmt.Errorf("error saving banner")
+// 	}
+// 	defer out.Close()
 
-	if _, err := io.Copy(out, bannerFile); err != nil {
-		os.Remove(bannerPath) // Cleanup partial files
-		return "", fmt.Errorf("error saving banner")
-	}
+// 	if _, err := io.Copy(out, bannerFile); err != nil {
+// 		os.Remove(bannerPath) // Cleanup partial files
+// 		return "", fmt.Errorf("error saving banner")
+// 	}
 
-	return fmt.Sprintf("%s.jpg", placeID), nil
-}
+//		return fmt.Sprintf("%s.jpg", placeID), nil
+//	}
+
+// func handleBannerUpload(_ http.ResponseWriter, r *http.Request, placeID string) (string, error) {
+// 	_ = placeID
+// 	if r.MultipartForm == nil {
+// 		if err := r.ParseMultipartForm(10 << 20); err != nil {
+// 			return "", fmt.Errorf("parse form: %w", err)
+// 		}
+// 	}
+
+// 	fileName, err := filemgr.SaveFormFile(r.MultipartForm, "banner", filemgr.EntityPlace, filemgr.PicBanner, false)
+// 	if err != nil {
+// 		return "", fmt.Errorf("saving banner: %w", err)
+// 	}
+
+// 	return fileName, nil
+// }
 
 // // Parses and validates form data for places
-
 func parsePlaceFormData(_ http.ResponseWriter, r *http.Request) (structs.Place, error) {
 	err := r.ParseMultipartForm(10 << 20) // 10MB limit
 	if err != nil {
 		return structs.Place{}, fmt.Errorf("unable to parse form")
 	}
 
-	// Required fields
 	name := strings.TrimSpace(r.FormValue("name"))
 	address := strings.TrimSpace(r.FormValue("address"))
 	description := strings.TrimSpace(r.FormValue("description"))
@@ -211,14 +224,10 @@ func parsePlaceFormData(_ http.ResponseWriter, r *http.Request) (structs.Place, 
 	zipcode := strings.TrimSpace(r.FormValue("zipCode"))
 	phone := strings.TrimSpace(r.FormValue("phone"))
 
-	// Banner handling (optional)
+	// Optional banner upload via filemgr
 	var bannerFilename string
-	file, handler, err := r.FormFile("banner")
-	if err == nil && file != nil {
-		defer file.Close()
-		// Save or process the file here, for now we just read filename
-		bannerFilename = handler.Filename
-		// Actual storage logic goes here...
+	if r.MultipartForm != nil {
+		bannerFilename, _ = filemgr.SaveFormFile(r.MultipartForm, "banner", filemgr.EntityPlace, filemgr.PicBanner, false)
 	}
 
 	return structs.Place{
@@ -245,10 +254,15 @@ func parsePlaceFormData(_ http.ResponseWriter, r *http.Request) (structs.Place, 
 // 		return structs.Place{}, fmt.Errorf("unable to parse form")
 // 	}
 
-// 	name, address, description, category, capacityStr := r.FormValue("name"), r.FormValue("address"), r.FormValue("description"), r.FormValue("category"), r.FormValue("capacity")
+// 	// Required fields
+// 	name := strings.TrimSpace(r.FormValue("name"))
+// 	address := strings.TrimSpace(r.FormValue("address"))
+// 	description := strings.TrimSpace(r.FormValue("description"))
+// 	category := strings.TrimSpace(r.FormValue("category"))
+// 	capacityStr := strings.TrimSpace(r.FormValue("capacity"))
 
 // 	if name == "" || address == "" || description == "" || category == "" || capacityStr == "" {
-// 		return structs.Place{}, fmt.Errorf("all fields are required")
+// 		return structs.Place{}, fmt.Errorf("all required fields must be filled")
 // 	}
 
 // 	capacity, err := strconv.Atoi(capacityStr)
@@ -256,26 +270,39 @@ func parsePlaceFormData(_ http.ResponseWriter, r *http.Request) (structs.Place, 
 // 		return structs.Place{}, fmt.Errorf("capacity must be a positive integer")
 // 	}
 
+// 	// Optional fields
+// 	city := strings.TrimSpace(r.FormValue("city"))
+// 	country := strings.TrimSpace(r.FormValue("country"))
+// 	zipcode := strings.TrimSpace(r.FormValue("zipCode"))
+// 	phone := strings.TrimSpace(r.FormValue("phone"))
+
+// 	// Banner handling (optional)
+// 	var bannerFilename string
+// 	file, handler, err := r.FormFile("banner")
+// 	if err == nil && file != nil {
+// 		defer file.Close()
+// 		// Save or process the file here, for now we just read filename
+// 		bannerFilename = handler.Filename
+// 		// Actual storage logic goes here...
+// 	}
+
 // 	return structs.Place{
+// 		PlaceID:     utils.GenerateID(14),
 // 		Name:        name,
 // 		Address:     address,
 // 		Description: description,
 // 		Category:    category,
 // 		Capacity:    capacity,
-// 		PlaceID:     utils.GenerateID(14),
+// 		Banner:      bannerFilename,
+// 		Phone:       phone,
+// 		City:        city,
+// 		Country:     country,
+// 		ZipCode:     zipcode,
 // 		CreatedAt:   time.Now(),
 // 		ReviewCount: 0,
+// 		Status:      "active",
 // 	}, nil
 // }
-
-// Sends a JSON response
-func respondWithJSON(w http.ResponseWriter, statusCode int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	if err := json.NewEncoder(w).Encode(data); err != nil {
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-	}
-}
 
 // Creates a new place
 func CreatePlace(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
@@ -293,14 +320,6 @@ func CreatePlace(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	}
 	place.CreatedBy = requestingUserID
 
-	// Handle banner upload
-	banner, err := handleBannerUpload(w, r, place.PlaceID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	place.Banner = banner
-
 	// Insert into MongoDB
 	_, err = db.PlacesCollection.InsertOne(context.TODO(), place)
 	if err != nil {
@@ -310,10 +329,8 @@ func CreatePlace(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 
 	autocom.AddPlaceToAutocorrect(rdx.Conn, place.PlaceID, place.Name)
 
-	utils.CreateThumb(place.PlaceID, bannerDir, ".jpg", 300, 200)
-
 	userdata.SetUserData("place", place.PlaceID, requestingUserID, "", "")
 	go mq.Emit("place-created", mq.Index{EntityType: "place", EntityId: place.PlaceID, Method: "POST"})
 
-	respondWithJSON(w, http.StatusCreated, place)
+	utils.RespondWithJSON(w, http.StatusCreated, place)
 }

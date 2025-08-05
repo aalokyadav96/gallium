@@ -59,41 +59,40 @@ func setupRouter(rateLimiter *ratelim.RateLimiter) *httprouter.Router {
 	router := httprouter.New()
 	router.GET("/health", Index)
 
-	routes.AddActivityRoutes(router)
-	routes.AddAdminRoutes(router)
-	routes.AddAdsRoutes(router)
-	routes.AddArtistRoutes(router)
-	routes.AddBaitoRoutes(router)
-	routes.AddBeatRoutes(router)
-	routes.AddBookingRoutes(router)
-	routes.AddAuthRoutes(router)
-	routes.AddCartRoutes(router)
-	routes.AddCartoonRoutes(router)
+	routes.AddActivityRoutes(router, rateLimiter)
+	routes.AddAdminRoutes(router, rateLimiter)
+	routes.AddAdsRoutes(router, rateLimiter)
+	routes.AddArtistRoutes(router, rateLimiter)
+	routes.AddBaitoRoutes(router, rateLimiter)
+	routes.AddBeatRoutes(router, rateLimiter)
+	routes.AddBookingRoutes(router, rateLimiter)
+	routes.AddAuthRoutes(router, rateLimiter)
+	routes.AddCartRoutes(router, rateLimiter)
 	// chat routes are added in main
-	routes.AddCommentsRoutes(router)
-	routes.AddDiscordRoutes(router)
-	routes.AddEventsRoutes(router)
-	routes.RegisterFarmRoutes(router)
+	routes.AddCommentsRoutes(router, rateLimiter)
+	routes.AddDiscordRoutes(router, rateLimiter)
+	routes.AddEventsRoutes(router, rateLimiter)
+	routes.RegisterFarmRoutes(router, rateLimiter)
 	routes.AddFeedRoutes(router, rateLimiter)
-	routes.AddHomeRoutes(router)
-	routes.AddItineraryRoutes(router)
-	routes.AddMapRoutes(router)
-	routes.AddMediaRoutes(router)
-	routes.AddMerchRoutes(router)
-	routes.AddPlaceRoutes(router)
-	routes.AddPlaceTabRoutes(router)
-	routes.AddPostRoutes(router)
-	routes.AddProductRoutes(router)
-	routes.AddProfileRoutes(router)
-	routes.AddQnARoutes(router)
-	routes.AddRecipeRoutes(router)
-	routes.AddReportRoutes(router)
-	routes.AddReviewsRoutes(router)
-	routes.AddSearchRoutes(router)
-	routes.AddSettingsRoutes(router)
+	routes.AddHomeRoutes(router, rateLimiter)
+	routes.AddItineraryRoutes(router, rateLimiter)
+	routes.AddMapRoutes(router, rateLimiter)
+	routes.AddMediaRoutes(router, rateLimiter)
+	routes.AddMerchRoutes(router, rateLimiter)
+	routes.AddPlaceRoutes(router, rateLimiter)
+	routes.AddPlaceTabRoutes(router, rateLimiter)
+	routes.AddPostRoutes(router, rateLimiter)
+	routes.AddProductRoutes(router, rateLimiter)
+	routes.AddProfileRoutes(router, rateLimiter)
+	routes.AddQnARoutes(router, rateLimiter)
+	routes.AddRecipeRoutes(router, rateLimiter)
+	routes.AddReportRoutes(router, rateLimiter)
+	routes.AddReviewsRoutes(router, rateLimiter)
+	routes.AddSearchRoutes(router, rateLimiter)
+	routes.AddSettingsRoutes(router, rateLimiter)
 	routes.AddStaticRoutes(router)
-	routes.AddSuggestionsRoutes(router)
-	routes.AddTicketRoutes(router)
+	routes.AddSuggestionsRoutes(router, rateLimiter)
+	routes.AddTicketRoutes(router, rateLimiter)
 	routes.AddUtilityRoutes(router, rateLimiter)
 
 	return router
@@ -108,13 +107,13 @@ func main() {
 	// read port
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = ":8080"
+		port = ":10000"
 	} else if port[0] != ':' {
 		port = ":" + port
 	}
 
 	// initialize rate limiter
-	rateLimiter := ratelim.NewRateLimiter()
+	rateLimiter := ratelim.NewRateLimiter(1, 3, 10*time.Minute, 10000)
 
 	// initialize chat hub
 	hub := newchat.NewHub()
@@ -122,8 +121,8 @@ func main() {
 
 	// build router and add chat routes with hub
 	router := setupRouter(rateLimiter)
-	routes.AddChatRoutes(router)         // existing chat routes without hub
-	routes.AddNewChatRoutes(router, hub) // newchat routes that need hub
+	routes.AddChatRoutes(router, rateLimiter)         // existing chat routes without hub
+	routes.AddNewChatRoutes(router, hub, rateLimiter) // newchat routes that need hub
 
 	// apply middleware: CORS → security headers → logging → router
 	corsHandler := cors.New(cors.Options{
@@ -186,4 +185,6 @@ func withCSP(next http.Handler) http.Handler {
 }
 router := httprouter.New()
 wrapped := withCSP(router)
-log.Fatal(http.ListenAndServe(":8080", wrapped))*/
+log.Fatal(http.ListenAndServe(":8080", wrapped))
+
+*/

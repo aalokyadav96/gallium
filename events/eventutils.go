@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"naevis/db"
+	"naevis/filemgr"
+	"naevis/utils"
 	"net/http"
+	"path/filepath"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -103,4 +106,23 @@ func deleteRelatedData(eventID string) error {
 	}
 
 	return nil
+}
+
+func processEventImageUpload(r *http.Request, fieldName string, entity filemgr.EntityType, picture filemgr.PictureType, eventID string, resize bool) (string, error) {
+	if r.MultipartForm == nil {
+		if err := r.ParseMultipartForm(10 << 20); err != nil {
+			return "", err
+		}
+	}
+
+	fileName, err := filemgr.SaveFormFile(r.MultipartForm, fieldName, entity, picture, resize)
+	if err != nil || fileName == "" {
+		return "", nil // skip silently if not present
+	}
+
+	if resize && eventID != "" {
+		utils.CreateThumb(eventID, filepath.Join(string(entity), string(picture)), ".jpg", 300, 200)
+	}
+
+	return fileName, nil
 }
