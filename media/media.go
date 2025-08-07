@@ -3,9 +3,9 @@ package media
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"naevis/db"
 	"naevis/feed"
+	"naevis/filemgr"
 	"naevis/globals"
 	"naevis/mq"
 	"naevis/rdx"
@@ -13,7 +13,6 @@ import (
 	"naevis/userdata"
 	"naevis/utils"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -22,8 +21,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
-
-var mediaUploadPath = "./static/uploads"
 
 func AddMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	entityType := ps.ByName("entitytype")
@@ -60,66 +57,50 @@ func AddMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		media.ID = "p" + utils.GenerateID(16)
 	}
 
-	file, fileHeader, err := r.FormFile("media")
-	if err != nil {
-		if err == http.ErrMissingFile {
-			http.Error(w, "Media file is required", http.StatusBadRequest)
-		} else {
-			http.Error(w, "Error retrieving media file: "+err.Error(), http.StatusBadRequest)
-		}
+	files := r.MultipartForm.File["media"]
+	if len(files) == 0 {
+		http.Error(w, "No media file provided", http.StatusBadRequest)
 		return
 	}
-	defer file.Close()
 
-	mimeType := fileHeader.Header.Get("Content-Type")
+	header := files[0]
+	mimeType := header.Header.Get("Content-Type")
+	if mimeType == "" || mimeType == "application/octet-stream" {
+		mimeType = utils.GuessMimeType(header.Filename)
+	}
 	media.MimeType = mimeType
 
-	// Determine extension and type
-	var extension string
+	var picType filemgr.PictureType
 	switch {
 	case strings.HasPrefix(mimeType, "image/"):
-		extension = filepath.Ext(fileHeader.Filename)
 		media.Type = "image"
+		picType = filemgr.PicPhoto
 	case strings.HasPrefix(mimeType, "video/"):
-		extension = ".mp4"
 		media.Type = "video"
+		picType = filemgr.PicVideo
 	default:
-		http.Error(w, "Unsupported media type", http.StatusUnsupportedMediaType)
+		http.Error(w, "Unsupported media type: "+mimeType, http.StatusUnsupportedMediaType)
 		return
 	}
 
-	// Save file using filemgr
-	filename := media.ID + extension
-	fullPath := filepath.Join(mediaUploadPath, filename)
-	outFile, err := os.Create(fullPath)
+	filename, err := filemgr.SaveFormFile(r.MultipartForm, "media", filemgr.EntityMedia, picType, true)
 	if err != nil {
-		http.Error(w, "Error saving media file: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Media upload failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer outFile.Close()
-
-	if _, err := io.Copy(outFile, file); err != nil {
-		http.Error(w, "Error writing media file: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
 	media.URL = filename
 
-	switch media.Type {
-	case "video":
-		media.FileSize = fileHeader.Size
-		media.Duration = ExtractVideoDuration(fullPath)
+	fullPath := filepath.Join(filemgr.ResolvePath(filemgr.EntityMedia, picType), filename)
 
-		posterPath := filepath.Join(mediaUploadPath, media.ID+".jpg")
-		feed.CreatePoster(fullPath, posterPath, "00:00:01")
-		fmt.Printf("Default poster %s created successfully!\n", posterPath)
-
-		// Optional: generate a thumbnail for the poster image
-		// utils.CreateThumb(media.ID, mediaUploadPath, ".jpg", 150, 200)
-	case "image":
-		// Generate image thumbnail
-		// Using your utility or imaging logic
-		utils.CreateThumb(media.ID, mediaUploadPath, extension, 150, 200)
+	if media.Type == "video" {
+		media.FileSize = header.Size
+		media.Duration = feed.ExtractVideoDuration(fullPath)
+		posterPath := filepath.Join(filemgr.ResolvePath(filemgr.EntityMedia, filemgr.PicThumb), media.ID+".jpg")
+		if err := feed.CreatePoster(fullPath, posterPath); err != nil {
+			fmt.Printf("Poster creation failed: %v\n", err)
+		} else {
+			fmt.Printf("Poster created at %s\n", posterPath)
+		}
 	}
 
 	_, err = db.MediaCollection.InsertOne(r.Context(), media)
@@ -130,120 +111,58 @@ func AddMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 	userdata.SetUserData("media", media.ID, requestingUserID, entityType, entityID)
 
-	m := mq.Index{EntityType: "media", EntityId: media.ID, Method: "POST", ItemType: entityType, ItemId: entityID}
-	go mq.Emit("media-created", m)
+	go mq.Emit("media-created", mq.Index{
+		EntityType: "media",
+		EntityId:   media.ID,
+		Method:     "POST",
+		ItemType:   entityType,
+		ItemId:     entityID,
+	})
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(media)
 }
 
-// var mediaUploadPath = "./static/uploads"
+func EditMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	entityType := ps.ByName("entitytype")
+	entityID := ps.ByName("entityid")
+	mediaID := ps.ByName("id")
+	cacheKey := fmt.Sprintf("media:%s:%s", entityID, mediaID)
 
-// func AddMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-// 	entityType := ps.ByName("entitytype")
-// 	entityID := ps.ByName("entityid")
-// 	if entityID == "" {
-// 		http.Error(w, "Entity ID is required", http.StatusBadRequest)
-// 		return
-// 	}
+	// Check the cache first
+	cachedMedia, err := rdx.RdxGet(cacheKey)
+	if err == nil && cachedMedia != "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(cachedMedia))
+		return
+	}
 
-// 	err := r.ParseMultipartForm(50 << 20) // Limit to 50 MB
-// 	if err != nil {
-// 		http.Error(w, "Unable to parse form: "+err.Error(), http.StatusBadRequest)
-// 		return
-// 	}
+	// Fetch the media from MongoDB
+	var media structs.Media
+	err = db.MediaCollection.FindOne(r.Context(), bson.M{
+		"entityid":   entityID,
+		"entitytype": entityType,
+		"id":         mediaID,
+	}).Decode(&media)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			http.Error(w, "Media not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
 
-// 	requestingUserID, ok := r.Context().Value(globals.UserIDKey).(string)
-// 	if !ok || requestingUserID == "" {
-// 		http.Error(w, "Invalid or missing user ID", http.StatusUnauthorized)
-// 		return
-// 	}
+	// Cache the result
+	mediaJSON, _ := json.Marshal(media)
+	rdx.RdxSet(cacheKey, string(mediaJSON))
 
-// 	media := structs.Media{
-// 		EntityID:   entityID,
-// 		EntityType: entityType,
-// 		Caption:    r.FormValue("caption"),
-// 		CreatorID:  requestingUserID,
-// 		CreatedAt:  time.Now(),
-// 		UpdatedAt:  time.Now(),
-// 	}
+	m := mq.Index{EntityType: "media", EntityId: mediaID, Method: "{PUT}", ItemType: entityType, ItemId: entityID}
+	go mq.Emit("media-edited", m)
 
-// 	if entityType == "event" {
-// 		media.ID = "e" + utils.GenerateID(16)
-// 	} else {
-// 		media.ID = "p" + utils.GenerateID(16)
-// 	}
-
-// 	file, fileHeader, err := r.FormFile("media")
-// 	if err != nil {
-// 		if err == http.ErrMissingFile {
-// 			http.Error(w, "Media file is required", http.StatusBadRequest)
-// 		} else {
-// 			http.Error(w, "Error retrieving media file: "+err.Error(), http.StatusBadRequest)
-// 		}
-// 		return
-// 	}
-// 	if file != nil {
-// 		defer file.Close()
-// 	}
-
-// 	var fileExtension, mimeType string
-// 	if file != nil {
-// 		mimeType = fileHeader.Header.Get("Content-Type")
-// 		switch {
-// 		case strings.HasPrefix(mimeType, "image/"):
-// 			fileExtension = ".jpg"
-// 			media.Type = "image"
-// 		case strings.HasPrefix(mimeType, "video/"):
-// 			fileExtension = ".mp4"
-// 			media.Type = "video"
-// 		default:
-// 			http.Error(w, "Unsupported media type", http.StatusUnsupportedMediaType)
-// 			return
-// 		}
-
-// 		savePath := mediaUploadPath + "/" + media.ID + fileExtension
-// 		out, err := os.Create(savePath)
-// 		if err != nil {
-// 			http.Error(w, "Error saving media file: "+err.Error(), http.StatusInternalServerError)
-// 			return
-// 		}
-// 		defer out.Close()
-
-// 		if _, err := io.Copy(out, file); err != nil {
-// 			http.Error(w, "Error saving media file: "+err.Error(), http.StatusInternalServerError)
-// 			return
-// 		}
-
-// 		media.URL = media.ID + fileExtension
-// 		media.MimeType = mimeType
-// 		if media.Type == "video" {
-// 			media.FileSize = fileHeader.Size
-// 			media.Duration = ExtractVideoDuration(savePath)
-// 		}
-// 		// Generate default poster from the original video
-// 		defaultPosterPath := filepath.Join(mediaUploadPath, "/", media.ID+".jpg")
-// 		feed.CreatePoster(savePath, defaultPosterPath, "00:00:01")
-
-// 		utils.CreateThumb(media.ID, mediaUploadPath, ".jpg", 150, 200)
-
-// 		fmt.Printf("Default poster %s created successfully!\n", defaultPosterPath)
-// 	}
-
-// 	_, err = db.MediaCollection.InsertOne(r.Context(), media)
-// 	if err != nil {
-// 		http.Error(w, "Error saving media to database: "+err.Error(), http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	userdata.SetUserData("media", media.ID, requestingUserID, entityType, entityID)
-
-// 	m := mq.Index{EntityType: "media", EntityId: media.ID, Method: "POST", ItemType: entityType, ItemId: entityID}
-// 	go mq.Emit("media-created", m)
-
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(media)
-// }
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(media)
+}
 
 func GetMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	entityType := ps.ByName("entitytype")
@@ -331,50 +250,4 @@ func DeleteMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		"message": "Media deleted successfully",
 	}
 	json.NewEncoder(w).Encode(response)
-}
-
-func ExtractVideoDuration(savePath string) int {
-	_ = savePath
-	return 5
-}
-
-func EditMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	entityType := ps.ByName("entitytype")
-	entityID := ps.ByName("entityid")
-	mediaID := ps.ByName("id")
-	cacheKey := fmt.Sprintf("media:%s:%s", entityID, mediaID)
-
-	// Check the cache first
-	cachedMedia, err := rdx.RdxGet(cacheKey)
-	if err == nil && cachedMedia != "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(cachedMedia))
-		return
-	}
-
-	// Fetch the media from MongoDB
-	var media structs.Media
-	err = db.MediaCollection.FindOne(r.Context(), bson.M{
-		"entityid":   entityID,
-		"entitytype": entityType,
-		"id":         mediaID,
-	}).Decode(&media)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			http.Error(w, "Media not found", http.StatusNotFound)
-			return
-		}
-		http.Error(w, "Database error", http.StatusInternalServerError)
-		return
-	}
-
-	// Cache the result
-	mediaJSON, _ := json.Marshal(media)
-	rdx.RdxSet(cacheKey, string(mediaJSON))
-
-	m := mq.Index{EntityType: "media", EntityId: mediaID, Method: "{PUT}", ItemType: entityType, ItemId: entityID}
-	go mq.Emit("media-edited", m)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(media)
 }

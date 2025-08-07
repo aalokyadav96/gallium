@@ -6,6 +6,7 @@ import (
 	"mime/multipart"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 func SaveFile(file multipart.File, header *multipart.FileHeader, folder string) (string, error) {
@@ -24,4 +25,24 @@ func SaveFile(file multipart.File, header *multipart.FileHeader, folder string) 
 	}
 
 	return filename, nil
+}
+
+func GuessMimeType(filename string) string {
+	ext := strings.ToLower(filepath.Ext(filename))
+	switch ext {
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".png":
+		return "image/png"
+	case ".gif":
+		return "image/gif"
+	case ".mp4":
+		return "video/mp4"
+	case ".mov":
+		return "video/quicktime"
+	case ".webm":
+		return "video/webm"
+	default:
+		return "application/octet-stream"
+	}
 }

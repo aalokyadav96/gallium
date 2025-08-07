@@ -56,7 +56,6 @@ func GetAllPosts(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 
 	json.NewEncoder(w).Encode(posts)
 }
-
 func CreatePost(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		http.Error(w, "Invalid form data", http.StatusBadRequest)
@@ -90,15 +89,23 @@ func CreatePost(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	}
 
 	var imagePaths []string
-	files := r.MultipartForm.File["images"]
-	for range files {
-		// each image saved individually
-		path, err := filemgr.SaveFormFile(r.MultipartForm, "images", filemgr.EntityType("post"), filemgr.PictureType("photo"), false)
-		if err != nil {
-			http.Error(w, "Image upload failed", http.StatusInternalServerError)
-			return
+	for key, files := range r.MultipartForm.File {
+		if !strings.HasPrefix(key, "images_") {
+			continue
 		}
-		imagePaths = append(imagePaths, path)
+		for _, fileHeader := range files {
+			file, err := fileHeader.Open()
+			if err != nil {
+				http.Error(w, "Image upload failed", http.StatusInternalServerError)
+				return
+			}
+			path, err := filemgr.SaveFileForEntity(file, fileHeader, filemgr.EntityPost, filemgr.PicPhoto)
+			if err != nil {
+				http.Error(w, "Image upload failed", http.StatusInternalServerError)
+				return
+			}
+			imagePaths = append(imagePaths, path)
+		}
 	}
 
 	post := models.Post{
@@ -153,18 +160,26 @@ func UpdatePost(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		update["subcategory"] = v
 	}
 
-	// Optional new images
-	files := r.MultipartForm.File["images"]
-	if len(files) > 0 {
-		var imagePaths []string
-		for range files {
-			path, err := filemgr.SaveFormFile(r.MultipartForm, "images", filemgr.EntityType("post"), filemgr.PictureType("photo"), false)
+	var imagePaths []string
+	for key, files := range r.MultipartForm.File {
+		if !strings.HasPrefix(key, "images_") {
+			continue
+		}
+		for _, fileHeader := range files {
+			file, err := fileHeader.Open()
 			if err != nil {
 				http.Error(w, "Image upload failed", http.StatusInternalServerError)
 				return
 			}
-			imagePaths = append(imagePaths, "/uploads/"+path)
+			path, err := filemgr.SaveFileForEntity(file, fileHeader, filemgr.EntityPost, filemgr.PicPhoto)
+			if err != nil {
+				http.Error(w, "Image upload failed", http.StatusInternalServerError)
+				return
+			}
+			imagePaths = append(imagePaths, path)
 		}
+	}
+	if len(imagePaths) > 0 {
 		update["imagePaths"] = imagePaths
 	}
 

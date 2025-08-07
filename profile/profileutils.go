@@ -41,7 +41,7 @@ func uploadBannerHandler(_ http.ResponseWriter, r *http.Request, _ *middleware.C
 	}
 	defer file.Close()
 
-	origName, _, err := filemgr.SaveImageWithThumb(file, header, filemgr.EntityUser, filemgr.PicBanner, 300)
+	origName, _, err := filemgr.SaveImageWithThumb(file, header, filemgr.EntityUser, filemgr.PicBanner, 300, "")
 	if err != nil {
 		return nil, fmt.Errorf("save image with thumb failed: %w", err)
 	}
@@ -66,7 +66,7 @@ func updateProfilePictures(_ http.ResponseWriter, r *http.Request, claims *middl
 	}
 	defer file.Close()
 
-	origName, thumbName, err := filemgr.SaveImageWithThumb(file, header, filemgr.EntityUser, filemgr.PicPhoto, 100)
+	origName, thumbName, err := filemgr.SaveImageWithThumb(file, header, filemgr.EntityUser, filemgr.PicPhoto, 100, claims.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("save image with thumb failed: %w", err)
 	}

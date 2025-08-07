@@ -92,7 +92,7 @@ func CreateFarm(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		return
 	}
 
-	fileName, err := filemgr.SaveFormFile(r.MultipartForm, "photo", filemgr.EntityFarm, filemgr.PictureMain, false)
+	fileName, err := filemgr.SaveFormFile(r.MultipartForm, "photo", filemgr.EntityFarm, filemgr.PicPhoto, false)
 	if err == nil && fileName != "" {
 		farm.Photo = "/uploads/farms/" + fileName
 	}
@@ -141,7 +141,7 @@ func EditFarm(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		input.Contact = r.FormValue("contact")
 		input.AvailabilityTiming = r.FormValue("availabilityTiming")
 
-		fileName, err := filemgr.SaveFormFile(r.MultipartForm, "photo", filemgr.EntityFarm, filemgr.PictureMain, false)
+		fileName, err := filemgr.SaveFormFile(r.MultipartForm, "photo", filemgr.EntityFarm, filemgr.PicPhoto, false)
 		if err == nil && fileName != "" {
 			updateFields["photo"] = "/uploads/farms/" + fileName
 		}

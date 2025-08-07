@@ -31,7 +31,7 @@ func PostNewSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	posterFile, err := filemgr.SaveFormFile(r.MultipartForm, "poster", filemgr.EntitySong, filemgr.PicImage, false)
+	posterFile, err := filemgr.SaveFormFile(r.MultipartForm, "poster", filemgr.EntitySong, filemgr.PicPhoto, false)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -99,7 +99,7 @@ func EditSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		updateFields["songs.$.audioUrl"] = audioFile
 	}
 
-	posterFile, err := filemgr.SaveFormFile(r.MultipartForm, "poster", filemgr.EntitySong, filemgr.PicImage, false)
+	posterFile, err := filemgr.SaveFormFile(r.MultipartForm, "poster", filemgr.EntitySong, filemgr.PicPhoto, false)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return

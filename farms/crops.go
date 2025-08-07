@@ -55,7 +55,7 @@ func AddCrop(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	crop := parseCropForm(r)
 	crop.FarmID = farmID
 
-	filename, err := filemgr.SaveFormFile(r.MultipartForm, "image", filemgr.EntityCrop, filemgr.PictureMain, false)
+	filename, err := filemgr.SaveFormFile(r.MultipartForm, "image", filemgr.EntityCrop, filemgr.PicPhoto, false)
 	if err == nil && filename != "" {
 		crop.ImageURL = "/uploads/crops/" + filename
 	}
@@ -101,7 +101,7 @@ func EditCrop(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		update["expiryDate"] = d
 	}
 
-	filename, err := filemgr.SaveFormFile(r.MultipartForm, "image", filemgr.EntityCrop, filemgr.PictureMain, false)
+	filename, err := filemgr.SaveFormFile(r.MultipartForm, "image", filemgr.EntityCrop, filemgr.PicPhoto, false)
 	if err == nil && filename != "" {
 		update["imageUrl"] = "/uploads/crops/" + filename
 	}

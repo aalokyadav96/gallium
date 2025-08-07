@@ -269,7 +269,7 @@ type Media struct {
 	CommentsCount int                `json:"commentsCount" bson:"commentsCount"`
 	Visibility    string             `json:"visibility" bson:"visibility"`
 	Tags          []string           `json:"tags,omitempty" bson:"tags,omitempty"`
-	Duration      int                `json:"duration,omitempty" bson:"duration,omitempty"`
+	Duration      float64            `json:"duration,omitempty" bson:"duration,omitempty"`
 	FileSize      int64              `json:"fileSize,omitempty" bson:"fileSize,omitempty"`
 	MimeType      string             `json:"mimeType,omitempty" bson:"mimeType,omitempty"`
 	IsFeatured    bool               `json:"isFeatured,omitempty" bson:"isFeatured,omitempty"`

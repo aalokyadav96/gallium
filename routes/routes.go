@@ -456,7 +456,7 @@ func AddFeedRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) 
 	// router.POST("/api/v1/feed/repost/:postid", feed.Repost)
 	// router.DELETE("/api/v1/feed/repost/:postid", feed.DeleteRepost)
 	router.POST("/api/v1/feed/post", rateLimiter.Limit(middleware.Authenticate(feed.CreateTweetPost)))
-	router.PUT("/api/v1/feed/post/:postid", middleware.Authenticate(feed.EditPost))
+	// router.PUT("/api/v1/feed/post/:postid", middleware.Authenticate(feed.EditPost))
 	router.DELETE("/api/v1/feed/post/:postid", middleware.Authenticate(feed.DeletePost))
 }
 

@@ -116,7 +116,7 @@ func CreateBaito(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		b.BannerURL = banner
 	}
 
-	images, _ := filemgr.SaveFormFiles(r.MultipartForm, "images", filemgr.EntityBaito, filemgr.PicImage, false)
+	images, _ := filemgr.SaveFormFiles(r.MultipartForm, "images", filemgr.EntityBaito, filemgr.PicPhoto, false)
 	if len(images) > 0 {
 		b.Images = images
 	}
@@ -163,7 +163,7 @@ func UpdateBaito(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		update["$set"].(bson.M)["banner"] = banner
 	}
 
-	if images, _ := filemgr.SaveFormFiles(r.MultipartForm, "images", filemgr.EntityBaito, filemgr.PicImage, false); len(images) > 0 {
+	if images, _ := filemgr.SaveFormFiles(r.MultipartForm, "images", filemgr.EntityBaito, filemgr.PicPhoto, false); len(images) > 0 {
 		update["$set"].(bson.M)["images"] = images
 	}
 
