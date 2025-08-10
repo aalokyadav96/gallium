@@ -14,35 +14,50 @@ import (
 	"naevis/db"
 	"naevis/filemgr"
 	"naevis/models"
+	"naevis/mq"
 	"naevis/utils"
 
 	"github.com/julienschmidt/httprouter"
 	"go.mongodb.org/mongo-driver/bson"
 )
 
+// All Artists
 func GetAllArtists(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	cursor, err := db.ArtistsCollection.Find(ctx, bson.M{})
+	artists, err := utils.FindAndDecode[models.Artist](ctx, db.ArtistsCollection, bson.M{})
 	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, "Error fetching artists")
-		return
-	}
-	defer cursor.Close(ctx)
-
-	var artists []models.Artist
-	if err := cursor.All(ctx, &artists); err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, "Error parsing artist data")
+		utils.Error(w, http.StatusInternalServerError, "Error fetching artists")
 		return
 	}
 
-	if len(artists) == 0 {
-		artists = []models.Artist{}
-	}
-
-	utils.RespondWithJSON(w, http.StatusOK, artists)
+	utils.JSON(w, http.StatusOK, artists)
 }
+
+// func GetAllArtists(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+// 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+// 	defer cancel()
+
+// 	cursor, err := db.ArtistsCollection.Find(ctx, bson.M{})
+// 	if err != nil {
+// 		utils.RespondWithError(w, http.StatusInternalServerError, "Error fetching artists")
+// 		return
+// 	}
+// 	defer cursor.Close(ctx)
+
+// 	var artists []models.Artist
+// 	if err := cursor.All(ctx, &artists); err != nil {
+// 		utils.RespondWithError(w, http.StatusInternalServerError, "Error parsing artist data")
+// 		return
+// 	}
+
+// 	if len(artists) == 0 {
+// 		artists = []models.Artist{}
+// 	}
+
+// 	utils.RespondWithJSON(w, http.StatusOK, artists)
+// }
 
 func GetArtistByID(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	artistId := ps.ByName("id")
@@ -175,6 +190,7 @@ func parseArtistFormData(r *http.Request, existing *models.Artist) (models.Artis
 }
 
 func CreateArtist(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	ctx := r.Context()
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "Failed to parse form data")
 		return
@@ -186,30 +202,30 @@ func CreateArtist(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		return
 	}
 
-	artist.ArtistID = utils.GenerateID(12)
+	artist.ArtistID = utils.GenerateRandomString(12)
 	artist.EventIDs = []string{}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 
 	if _, err := db.ArtistsCollection.InsertOne(ctx, artist); err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to create artist")
 		return
 	}
 
+	// ✅ Emit event for messaging queue (if needed)
+	go mq.Emit(ctx, "artist-created", models.Index{
+		EntityType: "artist", EntityId: artist.ArtistID, Method: "POST",
+	})
+
 	utils.RespondWithJSON(w, http.StatusCreated, artist)
 }
 
 func UpdateArtist(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
 	idParam := ps.ByName("id")
 
 	if err := r.ParseMultipartForm(20 << 20); err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "Failed to parse form data")
 		return
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 
 	var existing models.Artist
 	if err := db.ArtistsCollection.FindOne(ctx, bson.M{"artistid": idParam}).Decode(&existing); err != nil {
@@ -236,6 +252,10 @@ func UpdateArtist(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 		return
 	}
 
+	// ✅ Emit event for messaging queue (if needed)
+	go mq.Emit(ctx, "artist-updated", models.Index{
+		EntityType: "artist", EntityId: idParam, Method: "PUT",
+	})
 	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "Artist updated"})
 }
 
@@ -592,6 +612,7 @@ func UpdateArtist(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 // }
 
 func DeleteArtistByID(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
 	artistID := ps.ByName("id")
 
 	if artistID == "" {
@@ -607,6 +628,11 @@ func DeleteArtistByID(w http.ResponseWriter, r *http.Request, ps httprouter.Para
 		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to delete artist")
 		return
 	}
+
+	// ✅ Emit event for messaging queue (if needed)
+	go mq.Emit(ctx, "artist-deleted", models.Index{
+		EntityType: "artist", EntityId: artistID, Method: "DELETE",
+	})
 
 	utils.RespondWithJSON(w, http.StatusOK, bson.M{"message": "Artist deleted successfully"})
 }

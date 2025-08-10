@@ -10,7 +10,7 @@ import (
 	"log"
 	"naevis/db"
 	"naevis/middleware"
-	"naevis/structs"
+	"naevis/models"
 	"net/http"
 	_ "net/http/pprof"
 	"time"
@@ -52,7 +52,7 @@ func PrintTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	var purchasedTicket structs.PurchasedTicket
+	var purchasedTicket models.PurchasedTicket
 	err = db.PurchasedTicketsCollection.FindOne(context.TODO(), bson.M{
 		"eventid":    eventID,
 		"uniquecode": uniqueCode,

@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"naevis/db"
-	"naevis/structs"
+	"naevis/models"
 	"net/http"
 	_ "net/http/pprof"
 
@@ -16,7 +16,7 @@ func GetTicketSeats(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 	eventID := ps.ByName("eventid")
 	ticketID := ps.ByName("ticketid")
 
-	var ticket structs.Ticket
+	var ticket models.Ticket
 	err := db.TicketsCollection.FindOne(context.TODO(), bson.M{
 		"eventid":  eventID,
 		"ticketid": ticketID,

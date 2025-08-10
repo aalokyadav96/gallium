@@ -7,9 +7,9 @@ import (
 	"log"
 	"naevis/db"
 	"naevis/globals"
+	"naevis/models"
 	"naevis/mq"
 	"naevis/stripe"
-	"naevis/structs"
 	"naevis/tickets"
 	"naevis/userdata"
 	"net/http"
@@ -157,7 +157,7 @@ func buyxMenu(w http.ResponseWriter, request MenuPurchaseRequest, requestingUser
 
 	// Find the menu in the database
 	// collection := client.Database("eventdb").Collection("menu")
-	var menu structs.Menu // Define the Menu struct based on your schema
+	var menu models.Menu // Define the Menu struct based on your schema
 	err := db.MenuCollection.FindOne(context.TODO(), bson.M{"placeid": placeId, "menuid": menuID}).Decode(&menu)
 	if err != nil {
 		http.Error(w, "Menu not found or other error", http.StatusNotFound)
@@ -180,7 +180,7 @@ func buyxMenu(w http.ResponseWriter, request MenuPurchaseRequest, requestingUser
 
 	userdata.SetUserData("menu", menuID, requestingUserID, "place", placeId)
 
-	m := mq.Index{}
+	m := models.Index{}
 	mq.Notify("menu-bought", m)
 
 	// Respond with a success message

@@ -57,30 +57,48 @@ func CreateComment(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 	utils.RespondWithJSON(w, http.StatusOK, comment)
 }
 
+// Comments
 func GetComments(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	entityType := ps.ByName("entitytype")
-	entityID := ps.ByName("entityid")
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
 
-	filter := bson.M{"entity_type": entityType, "entity_id": entityID}
-	cursor, err := db.CommentsCollection.Find(context.TODO(), filter)
+	filter := bson.M{
+		"entity_type": ps.ByName("entitytype"),
+		"entity_id":   ps.ByName("entityid"),
+	}
+	comments, err := utils.FindAndDecode[models.Comment](ctx, db.CommentsCollection, filter)
 	if err != nil {
-		http.Error(w, "DB find failed", http.StatusInternalServerError)
-		return
-	}
-	defer cursor.Close(context.TODO())
-
-	var comments []models.Comment
-	if err := cursor.All(context.TODO(), &comments); err != nil {
-		http.Error(w, "Cursor decode failed", http.StatusInternalServerError)
+		utils.Error(w, http.StatusInternalServerError, "Failed to fetch comments")
 		return
 	}
 
-	if len(comments) == 0 {
-		comments = []models.Comment{}
-	}
-
-	utils.RespondWithJSON(w, http.StatusOK, comments)
+	utils.JSON(w, http.StatusOK, comments)
 }
+
+// func GetComments(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+// 	entityType := ps.ByName("entitytype")
+// 	entityID := ps.ByName("entityid")
+
+// 	filter := bson.M{"entity_type": entityType, "entity_id": entityID}
+// 	cursor, err := db.CommentsCollection.Find(context.TODO(), filter)
+// 	if err != nil {
+// 		http.Error(w, "DB find failed", http.StatusInternalServerError)
+// 		return
+// 	}
+// 	defer cursor.Close(context.TODO())
+
+// 	var comments []models.Comment
+// 	if err := cursor.All(context.TODO(), &comments); err != nil {
+// 		http.Error(w, "Cursor decode failed", http.StatusInternalServerError)
+// 		return
+// 	}
+
+// 	if len(comments) == 0 {
+// 		comments = []models.Comment{}
+// 	}
+
+// 	utils.RespondWithJSON(w, http.StatusOK, comments)
+// }
 
 func GetComment(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	commentID := ps.ByName("entitytype")

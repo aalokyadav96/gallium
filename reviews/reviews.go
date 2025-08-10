@@ -7,12 +7,11 @@ import (
 	"log"
 	"naevis/db"
 	"naevis/globals"
+	"naevis/models"
 	"naevis/mq"
-	"naevis/structs"
 	"naevis/userdata"
 	"naevis/utils"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
@@ -22,53 +21,76 @@ import (
 
 // var db.ReviewsCollection *mongo.Collection
 
-// GET /api/reviews/:entityType/:entityId
+// Reviews
 func GetReviews(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
 	entityType := ps.ByName("entityType")
 	entityId := ps.ByName("entityId")
 
-	skip, limit, filters, sort := parseQueryParams(r)
-	filters["entity_type"] = entityType
-	filters["entity_id"] = entityId
+	skip, limit := utils.ParsePagination(r, 10, 100)
+	sort := utils.ParseSort(r.URL.Query().Get("sort"), bson.D{{Key: "createdAt", Value: -1}}, nil)
 
-	// Create options for the Find query
-	findOptions := options.Find().
-		SetSkip(skip).
-		SetLimit(limit).
-		SetSort(sort)
+	filter := bson.M{"entity_type": entityType, "entity_id": entityId}
+	opts := options.Find().SetSkip(skip).SetLimit(limit).SetSort(sort)
 
-	cursor, err := db.ReviewsCollection.Find(context.TODO(), filters, findOptions)
+	reviews, err := utils.FindAndDecode[models.Review](ctx, db.ReviewsCollection, filter, opts)
 	if err != nil {
-		log.Printf("Error retrieving reviews: %v", err)
-		http.Error(w, "Failed to retrieve reviews", http.StatusInternalServerError)
+		utils.Error(w, http.StatusInternalServerError, "Failed to retrieve reviews")
 		return
 	}
-	defer cursor.Close(context.TODO())
 
-	var reviews []structs.Review
-	if err = cursor.All(context.TODO(), &reviews); err != nil {
-		log.Printf("Error decoding reviews: %v", err)
-		http.Error(w, "Failed to retrieve reviews", http.StatusInternalServerError)
-		return
-	}
-	if len(reviews) == 0 {
-		reviews = []structs.Review{}
-	}
-	w.Header().Set("Content-Type", "application/json")
-	response := map[string]any{
-		"status":  http.StatusOK,
-		"ok":      true,
-		"reviews": reviews,
-	}
-	log.Println("gets reviews : ", reviews)
-	json.NewEncoder(w).Encode(response)
+	utils.JSON(w, http.StatusOK, map[string]any{"status": http.StatusOK, "ok": true, "reviews": reviews})
 }
+
+// // GET /api/reviews/:entityType/:entityId
+// func GetReviews(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+// 	entityType := ps.ByName("entityType")
+// 	entityId := ps.ByName("entityId")
+
+// 	skip, limit, filters, sort := parseQueryParams(r)
+// 	filters["entity_type"] = entityType
+// 	filters["entity_id"] = entityId
+
+// 	// Create options for the Find query
+// 	findOptions := options.Find().
+// 		SetSkip(skip).
+// 		SetLimit(limit).
+// 		SetSort(sort)
+
+// 	cursor, err := db.ReviewsCollection.Find(context.TODO(), filters, findOptions)
+// 	if err != nil {
+// 		log.Printf("Error retrieving reviews: %v", err)
+// 		http.Error(w, "Failed to retrieve reviews", http.StatusInternalServerError)
+// 		return
+// 	}
+// 	defer cursor.Close(context.TODO())
+
+// 	var reviews []models.Review
+// 	if err = cursor.All(context.TODO(), &reviews); err != nil {
+// 		log.Printf("Error decoding reviews: %v", err)
+// 		http.Error(w, "Failed to retrieve reviews", http.StatusInternalServerError)
+// 		return
+// 	}
+// 	if len(reviews) == 0 {
+// 		reviews = []models.Review{}
+// 	}
+// 	w.Header().Set("Content-Type", "application/json")
+// 	response := map[string]any{
+// 		"status":  http.StatusOK,
+// 		"ok":      true,
+// 		"reviews": reviews,
+// 	}
+// 	log.Println("gets reviews : ", reviews)
+// 	json.NewEncoder(w).Encode(response)
+// }
 
 // GET /api/reviews/:entityType/:entityId/:reviewId
 func GetReview(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	reviewId := ps.ByName("reviewId")
 
-	var review structs.Review
+	var review models.Review
 	err := db.ReviewsCollection.FindOne(context.TODO(), bson.M{"reviewid": reviewId}).Decode(&review)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Review not found: %v", err), http.StatusNotFound)
@@ -82,6 +104,7 @@ func GetReview(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 // POST /api/reviews/:entityType/:entityId
 func AddReview(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
 	userId, ok := r.Context().Value(globals.UserIDKey).(string)
 	if !ok || userId == "" {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -109,13 +132,13 @@ func AddReview(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	var review structs.Review
+	var review models.Review
 	if err := json.NewDecoder(r.Body).Decode(&review); err != nil || review.Rating < 1 || review.Rating > 5 || review.Comment == "" {
 		http.Error(w, "Invalid review data", http.StatusBadRequest)
 		return
 	}
 
-	review.ReviewID = utils.GenerateID(16)
+	review.ReviewID = utils.GenerateRandomString(16)
 	review.UserID = userId
 	review.EntityType = entityType
 	review.EntityID = entityId
@@ -130,8 +153,8 @@ func AddReview(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 	userdata.SetUserData("review", review.ReviewID, userId, entityType, entityId)
 
-	m := mq.Index{EntityType: "review", EntityId: review.ReviewID, Method: "POST", ItemId: entityId, ItemType: entityType}
-	go mq.Emit("review-added", m)
+	m := models.Index{EntityType: "review", EntityId: review.ReviewID, Method: "POST", ItemId: entityId, ItemType: entityType}
+	go mq.Emit(ctx, "review-added", m)
 
 	log.Println("review : ", review.ReviewID)
 	log.Println("inserted review : ", inserted)
@@ -141,10 +164,11 @@ func AddReview(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 // PUT /api/reviews/:entityType/:entityId/:reviewId
 func EditReview(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
 	userId, _ := r.Context().Value(globals.UserIDKey).(string)
 	reviewId := ps.ByName("reviewId")
 
-	var review structs.Review
+	var review models.Review
 	err := db.ReviewsCollection.FindOne(context.TODO(), bson.M{"reviewid": reviewId}).Decode(&review)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Review not found: %v", err), http.StatusNotFound)
@@ -172,18 +196,19 @@ func EditReview(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	m := mq.Index{EntityType: "review", EntityId: reviewId, Method: "PUT", ItemId: review.EntityID, ItemType: review.EntityType}
-	go mq.Emit("review-edited", m)
+	m := models.Index{EntityType: "review", EntityId: reviewId, Method: "PUT", ItemId: review.EntityID, ItemType: review.EntityType}
+	go mq.Emit(ctx, "review-edited", m)
 
 	w.WriteHeader(http.StatusOK)
 }
 
 // DELETE /api/reviews/:entityType/:entityId/:reviewId
 func DeleteReview(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
 	userId, _ := r.Context().Value(globals.UserIDKey).(string)
 	reviewId := ps.ByName("reviewId")
 
-	var review structs.Review
+	var review models.Review
 	err := db.ReviewsCollection.FindOne(context.TODO(), bson.M{"reviewid": reviewId}).Decode(&review)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Review not found: %v", err), http.StatusNotFound)
@@ -203,44 +228,44 @@ func DeleteReview(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 
 	userdata.DelUserData("review", reviewId, userId)
 
-	m := mq.Index{EntityType: "review", EntityId: reviewId, Method: "DELETE", ItemId: review.EntityID, ItemType: review.EntityType}
-	go mq.Emit("review-deleted", m)
+	m := models.Index{EntityType: "review", EntityId: reviewId, Method: "DELETE", ItemId: review.EntityID, ItemType: review.EntityType}
+	go mq.Emit(ctx, "review-deleted", m)
 
 	w.WriteHeader(http.StatusOK)
 }
 
 // Utility functions remain unchanged (e.g., `parseQueryParams`, `isAdmin`)
 
-// Parse pagination and sorting parameters
-func parseQueryParams(r *http.Request) (int64, int64, bson.M, bson.D) {
-	query := r.URL.Query()
+// // Parse pagination and sorting parameters
+// func parseQueryParams(r *http.Request) (int64, int64, bson.M, bson.D) {
+// 	query := r.URL.Query()
 
-	page, err := strconv.Atoi(query.Get("page"))
-	if err != nil || page < 1 {
-		page = 1
-	}
-	limit, err := strconv.Atoi(query.Get("limit"))
-	if err != nil || limit < 1 {
-		limit = 10
-	}
+// 	page, err := strconv.Atoi(query.Get("page"))
+// 	if err != nil || page < 1 {
+// 		page = 1
+// 	}
+// 	limit, err := strconv.Atoi(query.Get("limit"))
+// 	if err != nil || limit < 1 {
+// 		limit = 10
+// 	}
 
-	skip := int64((page - 1) * limit)
-	filters := bson.M{}
-	if rating := query.Get("rating"); rating != "" {
-		ratingVal, _ := strconv.Atoi(rating)
-		filters["rating"] = ratingVal
-	}
+// 	skip := int64((page - 1) * limit)
+// 	filters := bson.M{}
+// 	if rating := query.Get("rating"); rating != "" {
+// 		ratingVal, _ := strconv.Atoi(rating)
+// 		filters["rating"] = ratingVal
+// 	}
 
-	sort := bson.D{}
-	switch query.Get("sort") {
-	case "date_asc":
-		sort = bson.D{{Key: "date", Value: 1}}
-	case "date_desc":
-		sort = bson.D{{Key: "date", Value: -1}}
-	}
+// 	sort := bson.D{}
+// 	switch query.Get("sort") {
+// 	case "date_asc":
+// 		sort = bson.D{{Key: "date", Value: 1}}
+// 	case "date_desc":
+// 		sort = bson.D{{Key: "date", Value: -1}}
+// 	}
 
-	return skip, int64(limit), filters, sort
-}
+// 	return skip, int64(limit), filters, sort
+// }
 
 func isAdmin(ctx context.Context) bool {
 	role, ok := ctx.Value(roleKey).(string)

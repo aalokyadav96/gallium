@@ -13,16 +13,16 @@ type ContactInfo struct {
 	Website string `bson:"website,omitempty" json:"website,omitempty"`
 }
 
-type Review struct {
-	ID        primitive.ObjectID `bson:"_id,omitempty"     json:"id"`
-	UserID    primitive.ObjectID `bson:"userId"            json:"userId"`
-	Rating    int                `bson:"rating"            json:"rating"`
-	Comment   string             `bson:"comment,omitempty" json:"comment,omitempty"`
-	CreatedAt time.Time          `bson:"createdAt"         json:"createdAt"`
-}
+// type Review struct {
+// 	ID        primitive.ObjectID `bson:"_id,omitempty"     json:"id"`
+// 	UserID    primitive.ObjectID `bson:"userId"            json:"userId"`
+// 	Rating    int                `bson:"rating"            json:"rating"`
+// 	Comment   string             `bson:"comment,omitempty" json:"comment,omitempty"`
+// 	CreatedAt time.Time          `bson:"createdAt"         json:"createdAt"`
+// }
 
 type Farm struct {
-	FarmID primitive.ObjectID `bson:"_id,omitempty"         json:"id"`
+	FarmID string `bson:"farmid,omitempty"         json:"farmid"`
 	// ID                 primitive.ObjectID `bson:"_id,omitempty"         json:"id"`
 	Name               string      `bson:"name"                  json:"name"`
 	Location           string      `bson:"location"              json:"location"`
@@ -51,25 +51,24 @@ type PricePoint struct {
 }
 
 type Crop struct {
-	ID           primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	Name         string             `json:"name"`
-	CropId       string             `json:"cropid"`
-	Price        float64            `json:"price"`
-	Quantity     int                `json:"quantity"`
-	Unit         string             `json:"unit"`
-	ImageURL     string             `json:"imageUrl,omitempty"`
-	Notes        string             `json:"notes,omitempty"`
-	Category     string             `json:"category,omitempty"`
-	CatalogueId  string             `json:"catalogueid,omitempty"`
-	Featured     bool               `json:"featured,omitempty"`
-	OutOfStock   bool               `json:"outOfStock,omitempty"`
-	HarvestDate  *time.Time         `json:"harvestDate,omitempty"`
-	ExpiryDate   *time.Time         `json:"expiryDate,omitempty"`
-	UpdatedAt    time.Time          `json:"updatedAt"`
-	PriceHistory []PricePoint       `json:"priceHistory,omitempty"`
-	FieldPlot    string             `json:"fieldPlot,omitempty"`
-	CreatedAt    time.Time          `json:"createdAt"`
-	FarmID       primitive.ObjectID `bson:"farmId,omitempty" json:"farmId,omitempty"`
+	Name         string       `json:"name"`
+	CropId       string       `json:"cropid"`
+	Price        float64      `json:"price"`
+	Quantity     int          `json:"quantity"`
+	Unit         string       `json:"unit"`
+	ImageURL     string       `json:"imageUrl,omitempty"`
+	Notes        string       `json:"notes,omitempty"`
+	Category     string       `json:"category,omitempty"`
+	CatalogueId  string       `json:"catalogueid,omitempty"`
+	Featured     bool         `json:"featured,omitempty"`
+	OutOfStock   bool         `json:"outOfStock,omitempty"`
+	HarvestDate  *time.Time   `json:"harvestDate,omitempty"`
+	ExpiryDate   *time.Time   `json:"expiryDate,omitempty"`
+	UpdatedAt    time.Time    `json:"updatedAt"`
+	PriceHistory []PricePoint `json:"priceHistory,omitempty"`
+	FieldPlot    string       `json:"fieldPlot,omitempty"`
+	CreatedAt    time.Time    `json:"createdAt"`
+	FarmID       string       `bson:"farmId,omitempty" json:"farmId,omitempty"`
 }
 
 type FarmOrder struct {
@@ -104,19 +103,20 @@ type CropListing struct {
 }
 
 type Product struct {
-	ID            primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	Name          string             `bson:"name" json:"name"`
-	Description   string             `bson:"description" json:"description"`
-	Price         float64            `bson:"price" json:"price"`
-	ImageURLs     []string           `bson:"imageUrls" json:"imageUrls"`
-	Category      string             `bson:"category" json:"category"`
-	Type          string             `bson:"type" json:"type"`
-	Quantity      float64            `bson:"quantity" json:"quantity"`
-	Unit          string             `bson:"unit" json:"unit"`
-	SKU           string             `bson:"sku,omitempty" json:"sku,omitempty"`
-	AvailableFrom *SafeTime          `bson:"availableFrom,omitempty" json:"availableFrom,omitempty"`
-	AvailableTo   *SafeTime          `bson:"availableTo,omitempty" json:"availableTo,omitempty"`
-	Featured      bool               `bson:"featured,omitempty" json:"featured,omitempty"`
+	ProductID     string    `bson:"productid,omitempty" json:"productid"`
+	Name          string    `bson:"name" json:"name"`
+	Description   string    `bson:"description" json:"description"`
+	Price         float64   `bson:"price" json:"price"`
+	ImageURLs     []string  `bson:"imageUrls" json:"imageUrls"`
+	Category      string    `bson:"category" json:"category"`
+	Type          string    `bson:"type" json:"type"`
+	Quantity      float64   `bson:"quantity" json:"quantity"`
+	Unit          string    `bson:"unit" json:"unit"`
+	SKU           string    `bson:"sku,omitempty" json:"sku,omitempty"`
+	AvailableFrom *SafeTime `bson:"availableFrom,omitempty" json:"availableFrom,omitempty"`
+	AvailableTo   *SafeTime `bson:"availableTo,omitempty" json:"availableTo,omitempty"`
+	Featured      bool      `bson:"featured,omitempty" json:"featured,omitempty"`
+	CreatedAt     time.Time `json:"createdAt"`
 }
 
 type SafeTime struct {
@@ -124,18 +124,18 @@ type SafeTime struct {
 }
 
 type Tool struct {
-	ID            primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	Name          string             `bson:"name" json:"name"`
-	Price         float64            `bson:"price" json:"price"`
-	Description   string             `bson:"description" json:"description"`
-	ImageURL      string             `bson:"imageUrl" json:"imageUrl"`
-	Category      string             `bson:"category" json:"category"`
-	SKU           string             `bson:"sku,omitempty" json:"sku,omitempty"`
-	AvailableFrom *SafeTime          `bson:"availableFrom,omitempty" json:"availableFrom,omitempty"`
-	AvailableTo   *SafeTime          `bson:"availableTo,omitempty" json:"availableTo,omitempty"`
-	Quantity      float64            `bson:"quantity" json:"quantity"`
-	Unit          string             `bson:"unit" json:"unit"`
-	Featured      bool               `bson:"featured" json:"featured"`
+	ToolID        string    `bson:"toolid,omitempty" json:"toolid"`
+	Name          string    `bson:"name" json:"name"`
+	Price         float64   `bson:"price" json:"price"`
+	Description   string    `bson:"description" json:"description"`
+	ImageURL      string    `bson:"imageUrl" json:"imageUrl"`
+	Category      string    `bson:"category" json:"category"`
+	SKU           string    `bson:"sku,omitempty" json:"sku,omitempty"`
+	AvailableFrom *SafeTime `bson:"availableFrom,omitempty" json:"availableFrom,omitempty"`
+	AvailableTo   *SafeTime `bson:"availableTo,omitempty" json:"availableTo,omitempty"`
+	Quantity      float64   `bson:"quantity" json:"quantity"`
+	Unit          string    `bson:"unit" json:"unit"`
+	Featured      bool      `bson:"featured" json:"featured"`
 }
 
 // UnmarshalJSON tries RFC3339, then "2006-01-02"

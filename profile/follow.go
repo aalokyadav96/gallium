@@ -8,8 +8,8 @@ import (
 	"naevis/db"
 	"naevis/globals"
 	"naevis/middleware"
+	"naevis/models"
 	"naevis/mq"
-	"naevis/structs"
 	"naevis/userdata"
 	"net/http"
 
@@ -27,16 +27,16 @@ func GetFollowing(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 	}
 	userID := claims.UserID
 
-	var userFollow structs.UserFollow
+	var userFollow models.UserFollow
 	err := db.FollowingsCollection.FindOne(context.TODO(), bson.M{"userid": userID}).Decode(&userFollow)
 	if err != nil && err != mongo.ErrNoDocuments {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	following := []structs.User{}
+	following := []models.User{}
 	for _, followingID := range userFollow.Follows {
-		var followUser structs.User
+		var followUser models.User
 		if err := db.FollowingsCollection.FindOne(context.TODO(), bson.M{"userid": followingID}).Decode(&followUser); err == nil {
 			following = append(following, followUser)
 		}
@@ -47,11 +47,12 @@ func GetFollowing(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 }
 
 func HandleFollowAction(w http.ResponseWriter, r *http.Request, ps httprouter.Params, action string) {
+	ctx := r.Context()
 
 	currentUserID := r.Context().Value(globals.UserIDKey).(string)
 	targetUserID := ps.ByName("id")
 
-	if err := UpdateFollowRelationship(currentUserID, targetUserID, action); err != nil {
+	if err := UpdateFollowRelationship(ctx, currentUserID, targetUserID, action); err != nil {
 		log.Printf("Error updating follow relationship: %v", err)
 		http.Error(w, "Failed to update follow relationship", http.StatusInternalServerError)
 		return
@@ -84,7 +85,7 @@ func GetFollowers(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 	}
 	userID := claims.UserID
 
-	var userFollow structs.UserFollow
+	var userFollow models.UserFollow
 	err = db.FollowingsCollection.FindOne(context.TODO(), bson.M{"userid": userID}).Decode(&userFollow)
 	if err != nil && err != mongo.ErrNoDocuments {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -93,7 +94,7 @@ func GetFollowers(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 
 	if len(userFollow.Followers) == 0 {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode([]structs.User{})
+		json.NewEncoder(w).Encode([]models.User{})
 		return
 	}
 
@@ -104,7 +105,7 @@ func GetFollowers(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 	}
 	defer cursor.Close(context.TODO())
 
-	followers := []structs.User{}
+	followers := []models.User{}
 	if err = cursor.All(context.TODO(), &followers); err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -146,7 +147,7 @@ func DoesFollow(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	json.NewEncoder(w).Encode(response)
 }
 
-func UpdateFollowRelationship(currentUserID, targetUserID, action string) error {
+func UpdateFollowRelationship(ctx context.Context, currentUserID, targetUserID, action string) error {
 	if action != "follow" && action != "unfollow" {
 		return fmt.Errorf("invalid action: %s", action)
 	}
@@ -190,12 +191,12 @@ func UpdateFollowRelationship(currentUserID, targetUserID, action string) error 
 	}
 
 	if action == "unfollow" {
-		m := mq.Index{EntityType: "follow", EntityId: currentUserID, Method: "DELETE", ItemId: targetUserID}
-		go mq.Emit("unfllowed", m)
+		m := models.Index{EntityType: "follow", EntityId: currentUserID, Method: "DELETE", ItemId: targetUserID}
+		go mq.Emit(ctx, "unfllowed", m)
 
 	} else {
-		m := mq.Index{EntityType: "follow", EntityId: currentUserID, Method: "PUT", ItemId: targetUserID}
-		go mq.Emit("followed", m)
+		m := models.Index{EntityType: "follow", EntityId: currentUserID, Method: "PUT", ItemId: targetUserID}
+		go mq.Emit(ctx, "followed", m)
 
 	}
 
@@ -203,7 +204,7 @@ func UpdateFollowRelationship(currentUserID, targetUserID, action string) error 
 }
 
 func CreateFollowEntry(userid string) {
-	var follow structs.UserFollow
+	var follow models.UserFollow
 	fmt.Println("::::::::::::::::::::::::::::", userid)
 	follow.UserID = userid
 	// Insert the place into MongoDB

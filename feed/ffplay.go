@@ -117,6 +117,43 @@ func CreatePoster(videoPath, posterPath string) error {
 	return nil
 }
 
+// // CreatePoster extracts a poster frame at a random timestamp from a video.
+// func CreatePoster(videoPath, posterPath string) error {
+// 	posterExt := filepath.ToSlash(posterPath + ".jpg")
+
+// 	log.Println(videoPath, posterExt)
+// 	duration, err := getVideoDuration(videoPath)
+// 	if err != nil {
+// 		return fmt.Errorf("could not determine video duration: %w", err)
+// 	}
+// 	log.Println(duration)
+
+// 	if duration < 3.0 {
+// 		duration = 3.0 // avoid starting too close to 0.0s
+// 	}
+
+// 	randomTime := rand.Float64() * (duration - 1.5)
+// 	timestamp := formatTimestamp(randomTime)
+
+// 	cmd := exec.Command(
+// 		"ffmpeg",
+// 		"-ss", timestamp,
+// 		"-i", videoPath,
+// 		"-vframes", "1",
+// 		"-q:v", "2",
+// 		posterExt,
+// 	)
+
+// 	var stderr bytes.Buffer
+// 	cmd.Stderr = &stderr
+
+// 	if err := cmd.Run(); err != nil {
+// 		return fmt.Errorf("poster creation failed: %w - %s", err, stderr.String())
+// 	}
+
+// 	return nil
+// }
+
 // getVideoDuration returns the video duration in seconds using ffprobe.
 func getVideoDuration(path string) (float64, error) {
 	cmd := exec.Command("ffprobe",
@@ -162,6 +199,53 @@ func ExtractVideoDuration(videoPath string) float64 {
 	}
 	return res
 }
+
+// // CreatePoster extracts a single frame from the video to use as a poster/thumbnail
+// func CreatePoster(videoPath, posterPath, timestamp string) error {
+// 	cmd := exec.Command(
+// 		"ffmpeg", "-ss", timestamp,
+// 		"-i", videoPath,
+// 		"-vframes", "1",
+// 		"-q:v", "2",
+// 		posterPath,
+// 	)
+
+// 	var stderr bytes.Buffer
+// 	cmd.Stderr = &stderr
+
+// 	if err := cmd.Run(); err != nil {
+// 		return fmt.Errorf("poster creation failed: %w - %s", err, stderr.String())
+// 	}
+
+// 	return nil
+// }
+
+// // Extracts video duration using ffprobe and returns it as an integer (in seconds)
+// func ExtractVideoDuration(videoPath string) int {
+// 	cmd := exec.Command("ffprobe",
+// 		"-v", "error",
+// 		"-show_entries", "format=duration",
+// 		"-of", "default=noprint_wrappers=1:nokey=1",
+// 		videoPath,
+// 	)
+
+// 	var out bytes.Buffer
+// 	cmd.Stdout = &out
+
+// 	if err := cmd.Run(); err != nil {
+// 		fmt.Printf("failed to extract video duration: %v\n", err)
+// 		return 5 // fallback default
+// 	}
+
+// 	durationStr := strings.TrimSpace(out.String())
+// 	durationFloat, err := strconv.ParseFloat(durationStr, 64)
+// 	if err != nil {
+// 		fmt.Printf("failed to parse duration: %v\n", err)
+// 		return 5
+// 	}
+
+// 	return int(durationFloat)
+// }
 
 // Normalize and process audio, returning a standard resolution (bitrate)
 func processAudioResolutions(originalFilePath, uploadDir, uniqueID string) ([]int, string) {

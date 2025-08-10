@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"naevis/db"
-	"naevis/structs"
+	"naevis/models"
 	"net/http"
 	"time"
 
@@ -20,7 +20,7 @@ func GetStock(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	menuID := ps.ByName("menuid")
 
 	// collection := client.Database("placedb").Collection("menu")
-	var menu structs.Menu
+	var menu models.Menu
 	err := db.MenuCollection.FindOne(context.TODO(), bson.M{"placeid": placeID, "menuid": menuID}).Decode(&menu)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Menu not found: %v", err), http.StatusNotFound)
@@ -57,7 +57,7 @@ func BuyMenu(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	}
 	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
 
-	var updatedMenu structs.Menu
+	var updatedMenu models.Menu
 	err := db.MenuCollection.FindOneAndUpdate(context.TODO(), filter, update, opts).Decode(&updatedMenu)
 	if err != nil {
 		http.Error(w, "Insufficient stock or menu not found", http.StatusConflict)

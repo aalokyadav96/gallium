@@ -7,7 +7,7 @@ import (
 	"naevis/db"
 	"naevis/globals"
 	"naevis/middleware"
-	"naevis/structs"
+	"naevis/models"
 	"net/http"
 	"time"
 
@@ -42,7 +42,7 @@ func LogActivities(w http.ResponseWriter, r *http.Request, _ httprouter.Params) 
 		return
 	}
 
-	var activities []structs.Activity
+	var activities []models.Activity
 	if err := json.NewDecoder(r.Body).Decode(&activities); err != nil {
 		SendErrorResponse(w, http.StatusBadRequest, "Invalid input")
 		log.Println("Failed to decode activities:", err)
@@ -108,7 +108,7 @@ func GetActivityFeed(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 	}
 	defer cursor.Close(context.TODO())
 
-	var activities []structs.Activity
+	var activities []models.Activity
 	if err := cursor.All(context.TODO(), &activities); err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to decode activities")
 		return
@@ -132,7 +132,7 @@ func GetTrendingActivities(w http.ResponseWriter, r *http.Request, _ httprouter.
 	}
 	defer cursor.Close(context.TODO())
 
-	var activities []structs.Activity
+	var activities []models.Activity
 	if err := cursor.All(context.TODO(), &activities); err != nil {
 		SendErrorResponse(w, http.StatusInternalServerError, "Failed to decode trending activities")
 		return
@@ -156,7 +156,7 @@ func SubscribeToActivityEvents() {
 	ch := pubsub.Channel()
 
 	for msg := range ch {
-		var activity structs.Activity
+		var activity models.Activity
 		if err := json.Unmarshal([]byte(msg.Payload), &activity); err != nil {
 			log.Println("Failed to decode activity from Redis:", err)
 			continue
@@ -170,7 +170,7 @@ func SubscribeToActivityEvents() {
 }
 
 // Process activity data and update recommendations
-func ProcessActivityForRecommendations(activity structs.Activity) {
+func ProcessActivityForRecommendations(activity models.Activity) {
 	// Example: Check if activity is a ticket purchase
 	if activity.Action == "purchase" {
 		log.Println("Processing purchase recommendation for:", activity.UserID)

@@ -8,9 +8,9 @@ import (
 	"log"
 	"naevis/db"
 	"naevis/globals"
+	"naevis/models"
 	"naevis/mq"
 	"naevis/stripe"
-	"naevis/structs"
 	"naevis/userdata"
 	"naevis/utils"
 	"net/http"
@@ -232,7 +232,7 @@ func buyxTicket(w http.ResponseWriter, r *http.Request, request TicketPurchaseRe
 		return
 	}
 
-	var ticket structs.Ticket
+	var ticket models.Ticket
 	err := db.TicketsCollection.FindOne(context.TODO(), bson.M{"eventid": eventID, "ticketid": ticketID}).Decode(&ticket)
 	if err != nil {
 		http.Error(w, "Ticket not found or other error", http.StatusNotFound)
@@ -254,7 +254,7 @@ func buyxTicket(w http.ResponseWriter, r *http.Request, request TicketPurchaseRe
 	}
 
 	var purchasedDocs []interface{}
-	var userDataDocs []structs.UserData
+	var userDataDocs []models.UserData
 	var uniqueCodes []string
 	now := time.Now()
 	createdAt := now.Format(time.RFC3339)
@@ -263,7 +263,7 @@ func buyxTicket(w http.ResponseWriter, r *http.Request, request TicketPurchaseRe
 		uniqueCode := utils.GetUUID()
 		uniqueCodes = append(uniqueCodes, uniqueCode)
 
-		purchasedDocs = append(purchasedDocs, structs.PurchasedTicket{
+		purchasedDocs = append(purchasedDocs, models.PurchasedTicket{
 			EventID:      eventID,
 			TicketID:     ticketID,
 			UserID:       requestingUserID,
@@ -271,7 +271,7 @@ func buyxTicket(w http.ResponseWriter, r *http.Request, request TicketPurchaseRe
 			PurchaseDate: now,
 		})
 
-		userDataDocs = append(userDataDocs, structs.UserData{
+		userDataDocs = append(userDataDocs, models.UserData{
 			EntityID:   uniqueCode,
 			EntityType: "ticket",
 			UserID:     requestingUserID,
@@ -287,7 +287,7 @@ func buyxTicket(w http.ResponseWriter, r *http.Request, request TicketPurchaseRe
 
 	userdata.AddUserDataBatch(userDataDocs)
 
-	mq.Notify("ticket-bought", mq.Index{})
+	mq.Notify("ticket-bought", models.Index{})
 
 	response := struct {
 		Message     string   `json:"message"`

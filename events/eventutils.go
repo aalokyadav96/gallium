@@ -121,7 +121,7 @@ func processEventImageUpload(r *http.Request, fieldName string, entity filemgr.E
 	}
 
 	if resize && eventID != "" {
-		utils.CreateThumb(eventID, filepath.Join(string(entity), string(picture)), ".jpg", 300, 200)
+		utils.CreateThumb(eventID, filepath.Join("static", "uploads", string(entity), string(picture)), ".jpg", 300, 200)
 	}
 
 	return fileName, nil

@@ -7,8 +7,8 @@ import (
 	"naevis/autocom"
 	"naevis/db"
 	"naevis/globals"
+	"naevis/models"
 	"naevis/rdx"
-	"naevis/structs"
 	"net/http"
 	"strconv"
 
@@ -45,7 +45,7 @@ func SuggestFollowers(w http.ResponseWriter, r *http.Request, _ httprouter.Param
 	skip := (page - 1) * limit
 
 	// Fetch user's follow data
-	var followData structs.UserFollow
+	var followData models.UserFollow
 	err = db.FollowingsCollection.FindOne(context.TODO(), bson.M{"userid": currentUserID}).Decode(&followData)
 	if err != nil && err != mongo.ErrNoDocuments {
 		http.Error(w, "Failed to fetch follow data", http.StatusInternalServerError)
@@ -74,9 +74,9 @@ func SuggestFollowers(w http.ResponseWriter, r *http.Request, _ httprouter.Param
 	defer cursor.Close(context.TODO())
 
 	// Collect suggested users
-	var suggestedUsers []structs.UserSuggest
+	var suggestedUsers []models.UserSuggest
 	for cursor.Next(context.TODO()) {
-		var suggestedUser structs.UserSuggest
+		var suggestedUser models.UserSuggest
 		if err := cursor.Decode(&suggestedUser); err == nil {
 			// Explicitly set is_following: false
 			suggestedUser.IsFollowing = false
@@ -86,7 +86,7 @@ func SuggestFollowers(w http.ResponseWriter, r *http.Request, _ httprouter.Param
 
 	// Handle empty response case
 	if len(suggestedUsers) == 0 {
-		suggestedUsers = []structs.UserSuggest{}
+		suggestedUsers = []models.UserSuggest{}
 	}
 
 	// Send JSON response
@@ -97,8 +97,8 @@ func SuggestFollowers(w http.ResponseWriter, r *http.Request, _ httprouter.Param
 }
 
 /***************************************************/
-func GetPlaceSuggestions(ctx context.Context, query string) ([]structs.Suggestion, error) {
-	var suggestions []structs.Suggestion
+func GetPlaceSuggestions(ctx context.Context, query string) ([]models.Suggestion, error) {
+	var suggestions []models.Suggestion
 
 	// Use Redis KEYS command to find matching place suggestions by name
 	// (this is a simple approach, you may want a more efficient search strategy)
@@ -109,7 +109,7 @@ func GetPlaceSuggestions(ctx context.Context, query string) ([]structs.Suggestio
 
 	// Retrieve the corresponding place data
 	for _, key := range keys {
-		var suggestion structs.Suggestion
+		var suggestion models.Suggestion
 		err := rdx.Conn.Get(ctx, key).Scan(&suggestion)
 		if err != nil {
 			return nil, err
@@ -159,7 +159,7 @@ func GetNearbyPlaces(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 	}
 	defer cursor.Close(context.TODO())
 
-	var places []structs.Place
+	var places []models.Place
 	if err = cursor.All(context.TODO(), &places); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -167,7 +167,7 @@ func GetNearbyPlaces(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 
 	// If no places are found, return an empty array
 	if places == nil {
-		places = []structs.Place{}
+		places = []models.Place{}
 	}
 
 	// Create a slice of sanitized places
@@ -179,6 +179,7 @@ func GetNearbyPlaces(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 		sanitizedPlaces = append(sanitizedPlaces, map[string]any{
 			"placeid":     place.PlaceID,
 			"name":        place.Name,
+			"banner":      place.Banner,
 			"category":    place.Category,
 			"capacity":    place.Capacity,
 			"reviewCount": place.ReviewCount,

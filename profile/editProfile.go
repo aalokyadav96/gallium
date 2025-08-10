@@ -7,6 +7,7 @@ import (
 
 	"naevis/db"
 	"naevis/middleware"
+	"naevis/models"
 	"naevis/mq"
 	"naevis/rdx"
 
@@ -17,6 +18,7 @@ import (
 
 // EditProfile allows a user to update their own profile fields.
 func EditProfile(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	ctx := r.Context()
 	// 1. Extract and validate the JWT from the Authorization header (strip "Bearer " if present).
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
@@ -63,12 +65,12 @@ func EditProfile(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	}
 
 	// 6. Emit a “profile-edited” event asynchronously.
-	m := mq.Index{
+	m := models.Index{
 		EntityType: "profile",
 		EntityId:   claims.UserID,
 		Method:     "PUT",
 	}
-	go mq.Emit("profile-edited", m)
+	go mq.Emit(ctx, "profile-edited", m)
 
 	// 7. Respond with the newly updated profile.
 	if err := RespondWithUserProfile(w, claims.UserID); err != nil {
@@ -79,6 +81,7 @@ func EditProfile(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 
 // DeleteProfile deletes the authenticated user’s profile completely.
 func DeleteProfile(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	ctx := r.Context()
 	// 1. Extract and validate the JWT from the Authorization header (strip "Bearer " if present).
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
@@ -105,12 +108,12 @@ func DeleteProfile(w http.ResponseWriter, r *http.Request, _ httprouter.Params) 
 	}
 
 	// 4. Emit a “profile-deleted” event asynchronously.
-	m := mq.Index{
+	m := models.Index{
 		EntityType: "profile",
 		EntityId:   claims.UserID,
 		Method:     "DELETE",
 	}
-	go mq.Emit("profile-deleted", m)
+	go mq.Emit(ctx, "profile-deleted", m)
 
 	// 5. Return a simple JSON success message.
 	w.Header().Set("Content-Type", "application/json")
@@ -169,7 +172,7 @@ func UpdateProfileFields(r *http.Request, claims *middleware.Claims) (bson.M, er
 	//  That is omitted unless you specifically need to handle files.)
 
 	// Notify a generic “profile-updated” event (payload is empty index here; fill as needed).
-	m := mq.Index{}
+	m := models.Index{}
 	mq.Notify("profile-updated", m)
 
 	return update, nil

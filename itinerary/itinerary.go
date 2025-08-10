@@ -10,41 +10,42 @@ import (
 
 	"naevis/db"
 	"naevis/middleware"
+	"naevis/models"
 	"naevis/utils"
 
 	"github.com/julienschmidt/httprouter"
 	"go.mongodb.org/mongo-driver/bson"
 )
 
-// Itinerary represents the travel itinerary
-type Itinerary struct {
-	ItineraryID string  `json:"itineraryid" bson:"itineraryid,omitempty"`
-	UserID      string  `json:"user_id" bson:"user_id"`
-	Name        string  `json:"name" bson:"name"`
-	Description string  `json:"description" bson:"description"`
-	StartDate   string  `json:"start_date" bson:"start_date"`
-	EndDate     string  `json:"end_date" bson:"end_date"`
-	Status      string  `json:"status" bson:"status"` // Draft/Confirmed
-	Published   bool    `json:"published" bson:"published"`
-	ForkedFrom  *string `json:"forked_from,omitempty" bson:"forked_from,omitempty"`
-	Deleted     bool    `json:"-" bson:"deleted,omitempty"` // Internal use only
-	// the new day-by-day schedule
-	Days []Day `json:"days" bson:"days"`
-}
+// // Itinerary represents the travel itinerary
+// type Itinerary struct {
+// 	ItineraryID string  `json:"itineraryid" bson:"itineraryid,omitempty"`
+// 	UserID      string  `json:"user_id" bson:"user_id"`
+// 	Name        string  `json:"name" bson:"name"`
+// 	Description string  `json:"description" bson:"description"`
+// 	StartDate   string  `json:"start_date" bson:"start_date"`
+// 	EndDate     string  `json:"end_date" bson:"end_date"`
+// 	Status      string  `json:"status" bson:"status"` // Draft/Confirmed
+// 	Published   bool    `json:"published" bson:"published"`
+// 	ForkedFrom  *string `json:"forked_from,omitempty" bson:"forked_from,omitempty"`
+// 	Deleted     bool    `json:"-" bson:"deleted,omitempty"` // Internal use only
+// 	// the new day-by-day schedule
+// 	Days []Day `json:"days" bson:"days"`
+// }
 
-// add these at the top, just below package declaration
-type Visit struct {
-	Location  string `json:"location" bson:"location"`
-	StartTime string `json:"start_time" bson:"start_time"`
-	EndTime   string `json:"end_time" bson:"end_time"`
-	// nil for the very first visit of a day
-	Transport *string `json:"transport,omitempty" bson:"transport,omitempty"`
-}
+// // add these at the top, just below package declaration
+// type Visit struct {
+// 	Location  string `json:"location" bson:"location"`
+// 	StartTime string `json:"start_time" bson:"start_time"`
+// 	EndTime   string `json:"end_time" bson:"end_time"`
+// 	// nil for the very first visit of a day
+// 	Transport *string `json:"transport,omitempty" bson:"transport,omitempty"`
+// }
 
-type Day struct {
-	Date   string  `json:"date" bson:"date"`
-	Visits []Visit `json:"visits" bson:"visits"`
-}
+// type Day struct {
+// 	Date   string  `json:"date" bson:"date"`
+// 	Visits []Visit `json:"visits" bson:"visits"`
+// }
 
 // Utility function to extract user ID from JWT
 func GetRequestingUserID(w http.ResponseWriter, r *http.Request) string {
@@ -57,39 +58,39 @@ func GetRequestingUserID(w http.ResponseWriter, r *http.Request) string {
 	return claims.UserID
 }
 
-// GET /api/itineraries
-func GetItineraries(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+// // GET /api/itineraries
+// func GetItineraries(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+// 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+// 	defer cancel()
 
-	filter := bson.M{"deleted": bson.M{"$ne": true}}
+// 	filter := bson.M{"deleted": bson.M{"$ne": true}}
 
-	cursor, err := db.ItineraryCollection.Find(ctx, filter)
-	if err != nil {
-		http.Error(w, "Error fetching itineraries", http.StatusInternalServerError)
-		return
-	}
-	defer cursor.Close(ctx)
+// 	cursor, err := db.ItineraryCollection.Find(ctx, filter)
+// 	if err != nil {
+// 		http.Error(w, "Error fetching itineraries", http.StatusInternalServerError)
+// 		return
+// 	}
+// 	defer cursor.Close(ctx)
 
-	var itineraries []Itinerary
-	for cursor.Next(ctx) {
-		var itinerary Itinerary
-		if err := cursor.Decode(&itinerary); err == nil {
-			itineraries = append(itineraries, itinerary)
-		}
-	}
+// 	var itineraries []models.Itinerary
+// 	for cursor.Next(ctx) {
+// 		var itinerary models.Itinerary
+// 		if err := cursor.Decode(&itinerary); err == nil {
+// 			itineraries = append(itineraries, itinerary)
+// 		}
+// 	}
 
-	if itineraries == nil {
-		itineraries = []Itinerary{}
-	}
+// 	if itineraries == nil {
+// 		itineraries = []models.Itinerary{}
+// 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(itineraries)
-}
+// 	w.Header().Set("Content-Type", "application/json")
+// 	json.NewEncoder(w).Encode(itineraries)
+// }
 
 // POST /api/itineraries
 func CreateItinerary(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	var itinerary Itinerary
+	var itinerary models.Itinerary
 	if err := json.NewDecoder(r.Body).Decode(&itinerary); err != nil {
 		http.Error(w, "Invalid request payload", http.StatusBadRequest)
 		return
@@ -102,7 +103,7 @@ func CreateItinerary(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 	}
 
 	itinerary.UserID = userID
-	itinerary.ItineraryID = utils.GenerateID(13)
+	itinerary.ItineraryID = utils.GenerateRandomString(13)
 	if itinerary.Status == "" {
 		itinerary.Status = "Draft"
 	}
@@ -129,7 +130,7 @@ func GetItinerary(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 
 	filter := bson.M{"itineraryid": itineraryID, "deleted": bson.M{"$ne": true}}
 
-	var itinerary Itinerary
+	var itinerary models.Itinerary
 	err := db.ItineraryCollection.FindOne(ctx, filter).Decode(&itinerary)
 	if err != nil {
 		http.Error(w, "Itinerary not found", http.StatusNotFound)
@@ -152,7 +153,7 @@ func UpdateItinerary(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	var existing Itinerary
+	var existing models.Itinerary
 	err := db.ItineraryCollection.FindOne(ctx, bson.M{"itineraryid": itineraryID}).Decode(&existing)
 	if err != nil {
 		http.Error(w, "Itinerary not found", http.StatusNotFound)
@@ -164,7 +165,7 @@ func UpdateItinerary(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 		return
 	}
 
-	var updated Itinerary
+	var updated models.Itinerary
 	if err := json.NewDecoder(r.Body).Decode(&updated); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
@@ -202,7 +203,7 @@ func DeleteItinerary(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	var itinerary Itinerary
+	var itinerary models.Itinerary
 	err := db.ItineraryCollection.FindOne(ctx, bson.M{"itineraryid": itineraryID}).Decode(&itinerary)
 	if err != nil {
 		http.Error(w, "Itinerary not found", http.StatusNotFound)
@@ -237,15 +238,15 @@ func ForkItinerary(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	var original Itinerary
+	var original models.Itinerary
 	err := db.ItineraryCollection.FindOne(ctx, bson.M{"itineraryid": originalID}).Decode(&original)
 	if err != nil {
 		http.Error(w, "Original itinerary not found", http.StatusNotFound)
 		return
 	}
 
-	newItinerary := Itinerary{
-		ItineraryID: utils.GenerateID(13),
+	newItinerary := models.Itinerary{
+		ItineraryID: utils.GenerateRandomString(13),
 		UserID:      userID,
 		Name:        "Forked - " + original.Name,
 		Description: original.Description,
@@ -292,6 +293,21 @@ func PublishItinerary(w http.ResponseWriter, r *http.Request, ps httprouter.Para
 	json.NewEncoder(w).Encode(result)
 }
 
+// Itineraries
+func GetItineraries(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	filter := bson.M{"deleted": bson.M{"$ne": true}}
+	itineraries, err := utils.FindAndDecode[models.Itinerary](ctx, db.ItineraryCollection, filter)
+	if err != nil {
+		utils.Error(w, http.StatusInternalServerError, "Error fetching itineraries")
+		return
+	}
+
+	utils.JSON(w, http.StatusOK, itineraries)
+}
+
 // GET /api/itineraries/search
 func SearchItineraries(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	query := r.URL.Query()
@@ -318,16 +334,16 @@ func SearchItineraries(w http.ResponseWriter, r *http.Request, _ httprouter.Para
 	}
 	defer cursor.Close(ctx)
 
-	var itineraries []Itinerary
+	var itineraries []models.Itinerary
 	for cursor.Next(ctx) {
-		var itinerary Itinerary
+		var itinerary models.Itinerary
 		if err := cursor.Decode(&itinerary); err == nil {
 			itineraries = append(itineraries, itinerary)
 		}
 	}
 
 	if itineraries == nil {
-		itineraries = []Itinerary{}
+		itineraries = []models.Itinerary{}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

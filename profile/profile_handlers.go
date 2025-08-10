@@ -9,8 +9,8 @@ import (
 
 	"naevis/db"
 	"naevis/middleware"
+	"naevis/models"
 	"naevis/rdx"
-	"naevis/structs"
 	"naevis/utils"
 
 	"github.com/julienschmidt/httprouter"
@@ -41,7 +41,7 @@ func GetUserProfile(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 	username := ps.ByName("username")
 
 	// 3. Look up the user in MongoDB using the request context.
-	var user structs.User
+	var user models.User
 	err = db.UserCollection.FindOne(r.Context(), bson.M{"username": username}).Decode(&user)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
@@ -63,7 +63,7 @@ func GetUserProfile(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 	user.Online = rdx.Exists("online:" + user.UserID)
 
 	// 6. Build a trimmed-down response DTO so we don’t accidentally expose fields like PasswordHash.
-	userProfile := structs.UserProfileResponse{
+	userProfile := models.UserProfileResponse{
 		UserID:         user.UserID,
 		Username:       user.Username,
 		Email:          user.Email,
@@ -71,8 +71,8 @@ func GetUserProfile(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 		Bio:            user.Bio,
 		ProfilePicture: user.ProfilePicture,
 		BannerPicture:  user.BannerPicture,
-		Followerscount: len(userFollow.Followers),
-		Followcount:    len(userFollow.Follows),
+		FollowersCount: len(userFollow.Followers),
+		FollowingCount: len(userFollow.Follows),
 		IsFollowing:    utils.Contains(userFollow.Followers, claims.UserID),
 		Online:         user.Online,
 		LastLogin:      user.LastLogin,
@@ -118,7 +118,7 @@ func GetProfile(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	}
 
 	// 4. Look up the user document in MongoDB using the request context.
-	var user structs.User
+	var user models.User
 	err = db.UserCollection.FindOne(r.Context(), bson.M{"userid": claims.UserID}).Decode(&user)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
@@ -133,8 +133,8 @@ func GetProfile(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	// user.Password = ""
 
 	// 6. Populate follower/follow counts and online status.
-	user.Followerscount = len(userFollow.Followers)
-	user.Followcount = len(userFollow.Follows)
+	user.FollowersCount = len(userFollow.Followers)
+	user.FollowingCount = len(userFollow.Follows)
 	user.Online = rdx.Exists("online:" + user.UserID)
 
 	// 7. Marshal to JSON and cache the result.
@@ -153,7 +153,7 @@ func GetProfile(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 }
 
 func RespondWithUserProfile(w http.ResponseWriter, userid string) error {
-	var userProfile structs.User
+	var userProfile models.User
 	err := db.UserCollection.FindOne(context.TODO(), bson.M{"userid": userid}).Decode(&userProfile)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
@@ -171,8 +171,8 @@ func RespondWithUserProfile(w http.ResponseWriter, userid string) error {
 	return json.NewEncoder(w).Encode(userProfile)
 }
 
-func GetUserByUsername(username string) (*structs.User, error) {
-	var user structs.User
+func GetUserByUsername(username string) (*models.User, error) {
+	var user models.User
 	err := db.UserCollection.FindOne(context.TODO(), bson.M{"username": username}).Decode(&user)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
@@ -183,12 +183,12 @@ func GetUserByUsername(username string) (*structs.User, error) {
 	return &user, nil
 }
 
-func GetUserFollowData(userID string) (structs.UserFollow, error) {
-	var userFollow structs.UserFollow
+func GetUserFollowData(userID string) (models.UserFollow, error) {
+	var userFollow models.UserFollow
 	err := db.FollowingsCollection.FindOne(context.TODO(), bson.M{"userid": userID}).Decode(&userFollow)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			return structs.UserFollow{
+			return models.UserFollow{
 				Followers: []string{},
 				Follows:   []string{},
 			}, nil

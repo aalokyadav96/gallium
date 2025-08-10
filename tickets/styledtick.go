@@ -15,7 +15,7 @@ import (
 
 	"naevis/db"
 	"naevis/middleware"
-	"naevis/structs"
+	"naevis/models"
 )
 
 func PrintStyledTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -37,7 +37,7 @@ func PrintStyledTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	}
 
 	// Fetch ticket
-	var ticket structs.PurchasedTicket
+	var ticket models.PurchasedTicket
 	err = db.PurchasedTicketsCollection.FindOne(context.TODO(), bson.M{
 		"eventid":    eventID,
 		"ticketid":   ticketID,

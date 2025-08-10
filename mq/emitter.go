@@ -1,11 +1,16 @@
 package mq
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"log"
+	"naevis/globals"
 	"naevis/models"
 	"naevis/search"
 )
 
+// Index represents an indexing-related message to be emitted.
 type Index struct {
 	EntityType string `json:"entity_type"`
 	Method     string `json:"method"`
@@ -14,89 +19,81 @@ type Index struct {
 	ItemType   string `json:"item_type"`
 }
 
-// // Emit event by sending JSON data to QUIC server
-// func Emit(eventName string, content Index) error {
-// 	fmt.Println(eventName, "emitted")
-
-// 	jsonData, err := json.Marshal(content)
-// 	if err != nil {
-// 		return fmt.Errorf("error marshalling JSON: %v", err)
-// 	}
-
-// 	err = Printer(jsonData)
-// 	if err != nil {
-// 		return fmt.Errorf("error sending data to QUIC server: %v", err)
-// 	}
-
-// 	return nil
-// }
-
-// Emit event by sending JSON data to QUIC server
-func Emit(eventName string, content Index) error {
-	fmt.Println(eventName, "emitted", content)
-	search.IndexDatainRedis(models.Index(content))
+// Notify is a placeholder for broadcasting events without indexing.
+func Notify(eventName string, content models.Index) error {
+	fmt.Println(eventName, "Notified", content)
 	return nil
 }
 
-// SERP_URL - replace with the actual URL
-// var SERP_URL = os.Getenv("SERP_URL") // Change to the actual endpoint
+// Emit now publishes indexing events to Redis instead of running immediately
+func Emit(ctx context.Context, eventName string, content models.Index) {
+	log.Printf("[Emit] START eventName=%s content=%+v", eventName, content)
 
-// func Printer(jsonData []byte) error {
-// 	start := time.Now()
+	data, err := json.Marshal(content)
+	if err != nil {
+		log.Printf("[Emit] Failed to marshal event content: %v", err)
+		return
+	}
 
-// 	// Capture memory usage before request
-// 	var memBefore runtime.MemStats
-// 	runtime.ReadMemStats(&memBefore)
+	if err := globals.RedisClient.Publish(context.Background(), "indexing-events", data).Err(); err != nil {
+		log.Printf("[Emit] Failed to publish event to Redis: %v", err)
+		return
+	}
 
-// 	// Send POST request
-// 	resp, err := http.Post(SERP_URL, "application/json", bytes.NewBuffer(jsonData))
-// 	if err != nil {
-// 		return fmt.Errorf("failed to send request: %v", err)
-// 	}
-// 	defer resp.Body.Close()
+	log.Printf("[Emit] Event published to channel 'indexing-events'")
+	log.Printf("[Emit] END")
+}
 
-// 	// Read response body
-// 	body, err := io.ReadAll(resp.Body)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to read response: %v", err)
-// 	}
-
-// 	// Capture memory usage after request
-// 	var memAfter runtime.MemStats
-// 	runtime.ReadMemStats(&memAfter)
-
-// 	elapsed := time.Since(start)
-// 	memUsed := memAfter.Alloc - memBefore.Alloc
-
-// 	fmt.Printf("Server Response: %s\n", string(body))
-// 	fmt.Printf("Execution Time: %v\n", elapsed)
-// 	fmt.Printf("Memory Used: %d bytes\n", memUsed)
-
-// 	return nil
+// // Emit sends the event to the indexing system.
+// // eventName is for logging/tracking purposes only.
+// func Emit(ctx context.Context, eventName string, content models.Index) {
+// 	fmt.Println(eventName, "emitted", content)
+// 	search.IndexDatainRedis(ctx, content)
 // }
 
-// func Printer(jsonData []byte) error {
-// 	start := time.Now()
+func StartIndexingWorker() {
+	ctx := context.Background()
+	sub := globals.RedisClient.Subscribe(ctx, "indexing-events")
+	ch := sub.Channel()
 
-// 	var memBefore runtime.MemStats
-// 	runtime.ReadMemStats(&memBefore)
+	log.Println("[IndexingWorker] Listening for indexing events...")
 
-// 	// Track memory after request
-// 	var memAfter runtime.MemStats
-// 	runtime.ReadMemStats(&memAfter)
+	for msg := range ch {
+		var event models.Index
+		if err := json.Unmarshal([]byte(msg.Payload), &event); err != nil {
+			log.Printf("[IndexingWorker] Failed to parse event: %v", err)
+			continue
+		}
+		log.Printf("[IndexingWorker] Processing event=%+v", event)
 
-// 	elapsed := time.Since(start)
-// 	memUsed := memAfter.Alloc - memBefore.Alloc
+		if err := search.IndexDatainRedis(ctx, event); err != nil {
+			log.Printf("[IndexingWorker] IndexDatainRedis error: %v", err)
+		} else {
+			log.Println("[IndexingWorker] Indexing complete")
+		}
+	}
+}
 
-// 	fmt.Printf("Server Response: %s\n", string(jsonData))
-// 	fmt.Printf("Execution Time: %v\n", elapsed)
-// 	fmt.Printf("Memory Used: %d bytes\n", memUsed)
+// Printer sends raw JSON to an external endpoint (placeholder).
+// Replace with your actual QUIC or HTTP implementation when ready.
+/*
+func Printer(jsonData []byte) error {
+	start := time.Now()
+	resp, err := http.Post(SERP_URL, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to send request: %v", err)
+	}
+	defer resp.Body.Close()
 
-// 	return nil // Success
-// }
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response: %v", err)
+	}
 
-// Notify event (placeholder function)
-func Notify(eventName string, content Index) error {
-	fmt.Println(eventName, "Notified")
+	elapsed := time.Since(start)
+	fmt.Printf("Server Response: %s\n", string(body))
+	fmt.Printf("Execution Time: %v\n", elapsed)
+
 	return nil
 }
+*/

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"naevis/db"
 	"naevis/filemgr"
+	"naevis/models"
 	"naevis/mq"
 	"naevis/rdx"
-	"naevis/structs"
 	"naevis/utils"
 	"net/http"
 	"strconv"
@@ -21,6 +21,7 @@ import (
 // var menuUploadPath string = "./static/menupic"
 
 func CreateMenu(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
 	placeID := ps.ByName("placeid")
 	if placeID == "" {
 		http.Error(w, "Place ID is required", http.StatusBadRequest)
@@ -50,7 +51,7 @@ func CreateMenu(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	menuID := utils.GenerateID(14)
+	menuID := utils.GenerateRandomString(14)
 
 	imageName, err := filemgr.SaveFormFile(
 		r.MultipartForm,
@@ -64,7 +65,7 @@ func CreateMenu(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	menu := structs.Menu{
+	menu := models.Menu{
 		PlaceID:   placeID,
 		Name:      name,
 		Price:     price,
@@ -81,7 +82,7 @@ func CreateMenu(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	go mq.Emit("menu-created", mq.Index{
+	go mq.Emit(ctx, "menu-created", models.Index{
 		EntityType: "menu", EntityId: menu.MenuID, Method: "POST", ItemType: "place", ItemId: placeID,
 	})
 
@@ -135,7 +136,7 @@ func CreateMenu(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 // 	}
 // 	_ = thumbName
 
-// 	menu := structs.Menu{
+// 	menu := models.Menu{
 // 		PlaceID:   placeID,
 // 		Name:      name,
 // 		Price:     price,
@@ -152,8 +153,8 @@ func CreateMenu(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 // 		return
 // 	}
 
-// 	m := mq.Index{EntityType: "menu", EntityId: menu.MenuID, Method: "POST", ItemType: "place", ItemId: placeID}
-// 	go mq.Emit("menu-created", m)
+// 	m := models.Index{EntityType: "menu", EntityId: menu.MenuID, Method: "POST", ItemType: "place", ItemId: placeID}
+// 	go mq.Emit(ctx, "menu-created", m)
 
 // 	w.Header().Set("Content-Type", "application/json")
 // 	json.NewEncoder(w).Encode(map[string]any{
@@ -201,7 +202,7 @@ func CreateMenu(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 // 	}
 
 // 	// Create a new Menu instance
-// 	menu := structs.Menu{
+// 	menu := models.Menu{
 // 		PlaceID:   placeID,
 // 		Name:      name,
 // 		Price:     price,
@@ -263,8 +264,8 @@ func CreateMenu(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 // 		return
 // 	}
 
-// 	m := mq.Index{EntityType: "menu", EntityId: menu.MenuID, Method: "POST", ItemType: "place", ItemId: placeID}
-// 	go mq.Emit("menu-created", m)
+// 	m := models.Index{EntityType: "menu", EntityId: menu.MenuID, Method: "POST", ItemType: "place", ItemId: placeID}
+// 	go mq.Emit(ctx, "menu-created", m)
 
 // 	// Respond with the created menu
 // 	w.Header().Set("Content-Type", "application/json")
@@ -291,7 +292,7 @@ func GetMenu(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	}
 
 	// collection := client.Database("placedb").Collection("menu")
-	var menu structs.Menu
+	var menu models.Menu
 	err = db.MenuCollection.FindOne(context.TODO(), bson.M{"placeid": placeID, "menuid": menuID}).Decode(&menu)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Menu not found: %v", err), http.StatusNotFound)
@@ -307,65 +308,80 @@ func GetMenu(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	json.NewEncoder(w).Encode(menu)
 }
 
-// Fetch a list of menu items
+// Menus
 func GetMenus(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	placeID := ps.ByName("placeid")
-	// cacheKey := fmt.Sprintf("menulist:%s", placeID)
-	fmt.Println("::::------------------------------::", placeID)
-	// // Check if the menu list is cached
-	// cachedMenus, err := rdx.RdxGet(cacheKey)
-	// if err == nil && cachedMenus != "" {
-	// 	// Return cached list
-	// 	w.Header().Set("Content-Type", "application/json")
-	// 	w.Write([]byte(cachedMenus))
-	// 	return
-	// }
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
 
-	// collection := client.Database("placedb").Collection("menu")
-	var menuList []structs.Menu
-	filter := bson.M{"placeid": placeID}
-
-	cursor, err := db.MenuCollection.Find(context.Background(), filter)
+	filter := bson.M{"placeid": ps.ByName("placeid")}
+	menus, err := utils.FindAndDecode[models.Menu](ctx, db.MenuCollection, filter)
 	if err != nil {
-		http.Error(w, "Failed to fetch menu", http.StatusInternalServerError)
+		utils.Error(w, http.StatusInternalServerError, "Failed to fetch menus")
 		return
 	}
-	defer cursor.Close(context.Background())
-
-	for cursor.Next(context.Background()) {
-		var menu structs.Menu
-		if err := cursor.Decode(&menu); err != nil {
-			http.Error(w, "Failed to decode menu", http.StatusInternalServerError)
-			return
-		}
-		menuList = append(menuList, menu)
-	}
-
-	if err := cursor.Err(); err != nil {
-		http.Error(w, "Cursor error", http.StatusInternalServerError)
-		return
-	}
-
-	if len(menuList) == 0 {
-		menuList = []structs.Menu{}
-	}
-
-	// Cache the list
-	// menuListJSON, _ := json.Marshal(menuList)
-	// rdx.RdxSet(cacheKey, string(menuListJSON))
-
-	// Respond with the list of menu
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(menuList)
+	utils.JSON(w, http.StatusOK, menus)
 }
+
+// // Fetch a list of menu items
+// func GetMenus(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+// 	placeID := ps.ByName("placeid")
+// 	// cacheKey := fmt.Sprintf("menulist:%s", placeID)
+// 	fmt.Println("::::------------------------------::", placeID)
+// 	// // Check if the menu list is cached
+// 	// cachedMenus, err := rdx.RdxGet(cacheKey)
+// 	// if err == nil && cachedMenus != "" {
+// 	// 	// Return cached list
+// 	// 	w.Header().Set("Content-Type", "application/json")
+// 	// 	w.Write([]byte(cachedMenus))
+// 	// 	return
+// 	// }
+
+// 	// collection := client.Database("placedb").Collection("menu")
+// 	var menuList []models.Menu
+// 	filter := bson.M{"placeid": placeID}
+
+// 	cursor, err := db.MenuCollection.Find(context.Background(), filter)
+// 	if err != nil {
+// 		http.Error(w, "Failed to fetch menu", http.StatusInternalServerError)
+// 		return
+// 	}
+// 	defer cursor.Close(context.Background())
+
+// 	for cursor.Next(context.Background()) {
+// 		var menu models.Menu
+// 		if err := cursor.Decode(&menu); err != nil {
+// 			http.Error(w, "Failed to decode menu", http.StatusInternalServerError)
+// 			return
+// 		}
+// 		menuList = append(menuList, menu)
+// 	}
+
+// 	if err := cursor.Err(); err != nil {
+// 		http.Error(w, "Cursor error", http.StatusInternalServerError)
+// 		return
+// 	}
+
+// 	if len(menuList) == 0 {
+// 		menuList = []models.Menu{}
+// 	}
+
+// 	// Cache the list
+// 	// menuListJSON, _ := json.Marshal(menuList)
+// 	// rdx.RdxSet(cacheKey, string(menuListJSON))
+
+// 	// Respond with the list of menu
+// 	w.Header().Set("Content-Type", "application/json")
+// 	json.NewEncoder(w).Encode(menuList)
+// }
 
 // Edit a menu item
 func EditMenu(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
 	placeID := ps.ByName("placeid")
 	menuID := ps.ByName("menuid")
 
 	// Parse the request body
-	var menu structs.Menu
+	var menu models.Menu
 	if err := json.NewDecoder(r.Body).Decode(&menu); err != nil {
 		http.Error(w, "Invalid input data", http.StatusBadRequest)
 		return
@@ -410,8 +426,8 @@ func EditMenu(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	// Invalidate the specific menu cache
 	rdx.RdxDel(fmt.Sprintf("menu:%s:%s", placeID, menuID))
 
-	m := mq.Index{EntityType: "menu", EntityId: menuID, Method: "PUT", ItemType: "place", ItemId: placeID}
-	go mq.Emit("menu-edited", m)
+	m := models.Index{EntityType: "menu", EntityId: menuID, Method: "PUT", ItemType: "place", ItemId: placeID}
+	go mq.Emit(ctx, "menu-edited", m)
 
 	// Send response
 	// w.Header().Set("Content-Type", "application/json")
@@ -428,6 +444,7 @@ func EditMenu(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 // Delete a menu item
 func DeleteMenu(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
 	placeID := ps.ByName("placeid")
 	menuID := ps.ByName("menuid")
 
@@ -448,8 +465,8 @@ func DeleteMenu(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	// Invalidate the cache
 	rdx.RdxDel(fmt.Sprintf("menu:%s:%s", placeID, menuID))
 
-	m := mq.Index{EntityType: "menu", EntityId: menuID, Method: "DELETE", ItemType: "place", ItemId: placeID}
-	go mq.Emit("menu-deleted", m)
+	m := models.Index{EntityType: "menu", EntityId: menuID, Method: "DELETE", ItemType: "place", ItemId: placeID}
+	go mq.Emit(ctx, "menu-deleted", m)
 
 	// // Send response
 	// w.WriteHeader(http.StatusOK)

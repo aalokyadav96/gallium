@@ -46,19 +46,7 @@ import (
 )
 
 func AddStaticRoutes(router *httprouter.Router) {
-	router.ServeFiles("/static/postpic/*filepath", http.Dir("static/postpic"))
-	router.ServeFiles("/static/merchpic/*filepath", http.Dir("static/merchpic"))
-	router.ServeFiles("/static/menupic/*filepath", http.Dir("static/menupic"))
 	router.ServeFiles("/static/uploads/*filepath", http.Dir("static/uploads"))
-	router.ServeFiles("/static/placepic/*filepath", http.Dir("static/placepic"))
-	router.ServeFiles("/static/businesspic/*filepath", http.Dir("static/eventpic"))
-	router.ServeFiles("/static/userpic/*filepath", http.Dir("static/userpic"))
-	router.ServeFiles("/static/eventpic/*filepath", http.Dir("static/eventpic"))
-	router.ServeFiles("/static/artistpic/*filepath", http.Dir("static/artistpic"))
-	router.ServeFiles("/static/cartoonpic/*filepath", http.Dir("static/cartoonpic"))
-	router.ServeFiles("/static/chatpic/*filepath", http.Dir("static/chatpic"))
-	router.ServeFiles("/static/newchatpic/*filepath", http.Dir("static/newchatpic"))
-	router.ServeFiles("/static/threadpic/*filepath", http.Dir("static/threadpic"))
 }
 
 func AddActivityRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
@@ -474,7 +462,13 @@ func AddAdsRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
 func AddSearchRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
 	router.GET("/api/v1/ac", search.Autocompleter)
 	router.GET("/api/v1/search/:entityType", rateLimiter.Limit(search.SearchHandler))
-	router.POST("/emitted", search.EventHandler)
+	router.POST("/api/v1/emitted", search.EventHandler)
+}
+
+func AddNewSearchRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
+	// router.GET("/api/v1/ac", newsearch.Autocompleter)
+	// router.GET("/api/v1/search/:entityType", rateLimiter.Limit(newsearch.SearchHandler))
+	// router.POST("/api/v1/emitted", newsearch.EventHandler)
 }
 
 func AddMiscRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {

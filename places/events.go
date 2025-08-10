@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"naevis/db"
-	"naevis/structs"
+	"naevis/models"
 	"net/http"
 	"strconv"
 	"time"
@@ -109,7 +109,7 @@ func GetEvents(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	defer cursor.Close(context.TODO())
 
 	// var events []bson.M
-	var events []structs.Event
+	var events []models.Event
 	if err := cursor.All(context.TODO(), &events); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

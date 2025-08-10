@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"naevis/filemgr"
 	"naevis/middleware"
+	"naevis/models"
 	"naevis/mq"
 	"net/http"
 
@@ -21,7 +22,7 @@ import (
 // 	}
 // 	resizedImg := imaging.Resize(img, width, height, imaging.Lanczos)
 
-// 	m := mq.Index{}
+// 	m := models.Index{}
 // 	mq.Notify("thumbnail-created", m)
 
 // 	return imaging.Save(resizedImg, outputPath)
@@ -47,7 +48,7 @@ func uploadBannerHandler(_ http.ResponseWriter, r *http.Request, _ *middleware.C
 	}
 
 	update["banner_picture"] = origName
-	mq.Notify("banner-uploaded", mq.Index{})
+	mq.Notify("banner-uploaded", models.Index{})
 
 	return update, nil
 }
@@ -74,7 +75,7 @@ func updateProfilePictures(_ http.ResponseWriter, r *http.Request, claims *middl
 	update["profile_picture"] = origName
 	update["profile_thumb"] = thumbName
 
-	mq.Notify("avatar-uploaded", mq.Index{})
+	mq.Notify("avatar-uploaded", models.Index{})
 
 	return update, nil
 }
@@ -120,7 +121,7 @@ func updateProfilePictures(_ http.ResponseWriter, r *http.Request, claims *middl
 // 	// update["banner_picture"] = bannerFileName + ".jpg"
 // 	update["banner_picture"] = bannerFileName + ".webp"
 
-// 	m := mq.Index{}
+// 	m := models.Index{}
 // 	mq.Notify("banner-uploaded", m)
 
 // 	return update, nil
@@ -173,7 +174,7 @@ func updateProfilePictures(_ http.ResponseWriter, r *http.Request, claims *middl
 
 // 	update["profile_picture"] = profileFileName + ".jpg"
 
-// 	m := mq.Index{}
+// 	m := models.Index{}
 // 	mq.Notify("avatar-uploaded", m)
 
 // 	return update, nil

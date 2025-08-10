@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"naevis/db"
 	"naevis/globals"
+	"naevis/models"
 	"naevis/mq"
 	"net/http"
 
@@ -108,7 +109,7 @@ func UpdateUserSetting(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 		return
 	}
 
-	m := mq.Index{}
+	m := models.Index{}
 	mq.Notify("settings-updated", m)
 
 	// Respond with proper JSON

@@ -5,11 +5,10 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"strconv"
 	"time"
 
 	"naevis/db"
-	"naevis/structs"
+	"naevis/models"
 	"naevis/utils"
 
 	"github.com/julienschmidt/httprouter"
@@ -25,74 +24,108 @@ func GetEventsCount(w http.ResponseWriter, r *http.Request, _ httprouter.Params)
 	utils.SendJSONResponse(w, http.StatusOK, count)
 }
 
-// GetEvents returns a paginated list of published events, sorted newest first.
 func GetEvents(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	// use request context with timeout
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	page := 1
-	limit := 10
-	if p, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && p > 0 {
-		page = p
-	}
-	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 {
-		limit = l
-	}
-	skip := int64((page - 1) * limit)
-	limit64 := int64(limit)
-
-	// filter := bson.M{"published": "true"}
-	filter := bson.M{}
+	skip, limit := utils.ParsePagination(r, 10, 100)
+	filter := bson.M{} // optionally {"published": true}
 
 	totalCount, err := db.EventsCollection.CountDocuments(ctx, filter)
 	if err != nil {
 		log.Println("CountDocuments error:", err)
-		http.Error(w, "Failed to fetch event count", http.StatusInternalServerError)
+		utils.Error(w, http.StatusInternalServerError, "Failed to fetch event count")
 		return
 	}
 
-	opts := options.Find().
-		SetSkip(skip).
-		SetLimit(limit64).
-		SetSort(bson.D{{Key: "created_at", Value: -1}})
-
-	cursor, err := db.EventsCollection.Find(ctx, filter, opts)
+	opts := options.Find().SetSkip(skip).SetLimit(limit).SetSort(bson.D{{Key: "created_at", Value: -1}})
+	rawEvents, err := utils.FindAndDecode[models.Event](ctx, db.EventsCollection, filter, opts)
 	if err != nil {
-		log.Println("Find error:", err)
-		http.Error(w, "Failed to fetch events", http.StatusInternalServerError)
-		return
-	}
-	defer cursor.Close(ctx)
-
-	var rawEvents []structs.Event
-	if err := cursor.All(ctx, &rawEvents); err != nil {
-		log.Println("Cursor.All error:", err)
-		http.Error(w, "Failed to parse events", http.StatusInternalServerError)
+		utils.Error(w, http.StatusInternalServerError, "Failed to fetch events")
 		return
 	}
 
-	// sanitize and enrich
-	safeEvents := make([]structs.Event, 0, len(rawEvents))
+	safeEvents := make([]models.Event, 0, len(rawEvents))
 	for _, e := range rawEvents {
 		safeEvents = append(safeEvents, toSafeEvent(e))
 	}
 
-	resp := struct {
-		Events     []structs.Event `json:"events"`
-		EventCount int64           `json:"eventCount"`
-		Page       int             `json:"page"`
-		Limit      int             `json:"limit"`
-	}{
-		Events:     safeEvents,
-		EventCount: totalCount,
-		Page:       page,
-		Limit:      limit,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	utils.JSON(w, http.StatusOK, map[string]any{
+		"events":     safeEvents,
+		"eventCount": totalCount,
+		"page":       skip/int64(limit) + 1,
+		"limit":      limit,
+	})
 }
+
+// // GetEvents returns a paginated list of published events, sorted newest first.
+// func GetEvents(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+// 	// use request context with timeout
+// 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+// 	defer cancel()
+
+// 	page := 1
+// 	limit := 10
+// 	if p, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && p > 0 {
+// 		page = p
+// 	}
+// 	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 {
+// 		limit = l
+// 	}
+// 	skip := int64((page - 1) * limit)
+// 	limit64 := int64(limit)
+
+// 	// filter := bson.M{"published": "true"}
+// 	filter := bson.M{}
+
+// 	totalCount, err := db.EventsCollection.CountDocuments(ctx, filter)
+// 	if err != nil {
+// 		log.Println("CountDocuments error:", err)
+// 		http.Error(w, "Failed to fetch event count", http.StatusInternalServerError)
+// 		return
+// 	}
+
+// 	opts := options.Find().
+// 		SetSkip(skip).
+// 		SetLimit(limit64).
+// 		SetSort(bson.D{{Key: "created_at", Value: -1}})
+
+// 	cursor, err := db.EventsCollection.Find(ctx, filter, opts)
+// 	if err != nil {
+// 		log.Println("Find error:", err)
+// 		http.Error(w, "Failed to fetch events", http.StatusInternalServerError)
+// 		return
+// 	}
+// 	defer cursor.Close(ctx)
+
+// 	var rawEvents []models.Event
+// 	if err := cursor.All(ctx, &rawEvents); err != nil {
+// 		log.Println("Cursor.All error:", err)
+// 		http.Error(w, "Failed to parse events", http.StatusInternalServerError)
+// 		return
+// 	}
+
+// 	// sanitize and enrich
+// 	safeEvents := make([]models.Event, 0, len(rawEvents))
+// 	for _, e := range rawEvents {
+// 		safeEvents = append(safeEvents, toSafeEvent(e))
+// 	}
+
+// 	resp := struct {
+// 		Events     []models.Event `json:"events"`
+// 		EventCount int64          `json:"eventCount"`
+// 		Page       int            `json:"page"`
+// 		Limit      int            `json:"limit"`
+// 	}{
+// 		Events:     safeEvents,
+// 		EventCount: totalCount,
+// 		Page:       page,
+// 		Limit:      limit,
+// 	}
+
+// 	w.Header().Set("Content-Type", "application/json")
+// 	json.NewEncoder(w).Encode(resp)
+// }
 
 // GetEvent returns one published event by its eventid, with tickets/media/merch lookups.
 func GetEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -156,7 +189,7 @@ func GetEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	var rawEvent structs.Event
+	var rawEvent models.Event
 	if err := cur.Decode(&rawEvent); err != nil {
 		log.Println("Decode error:", err)
 		http.Error(w, "Failed to decode event", http.StatusInternalServerError)
@@ -170,16 +203,16 @@ func GetEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 }
 
 // toSafeEvent ensures no nil slices or zero-values, computes Prices & Currency.
-func toSafeEvent(e structs.Event) structs.Event {
+func toSafeEvent(e models.Event) models.Event {
 	// default empty slices
 	if e.Tickets == nil {
-		e.Tickets = []structs.Ticket{}
+		e.Tickets = []models.Ticket{}
 	}
 	if e.Merch == nil {
-		e.Merch = []structs.Merch{}
+		e.Merch = []models.Merch{}
 	}
 	if e.FAQs == nil {
-		e.FAQs = []structs.FAQ{}
+		e.FAQs = []models.FAQ{}
 	}
 	if e.Artists == nil {
 		e.Artists = []string{}
@@ -227,7 +260,7 @@ func AddFAQs(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	}
 
 	// Parse the request body
-	var newFAQ structs.FAQ
+	var newFAQ models.FAQ
 	err := json.NewDecoder(r.Body).Decode(&newFAQ)
 	if err != nil {
 		log.Printf("Invalid request payload: %v", err)

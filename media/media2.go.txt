@@ -1,16 +1,15 @@
 package media
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"naevis/db"
 	"naevis/feed"
 	"naevis/filemgr"
 	"naevis/globals"
-	"naevis/models"
 	"naevis/mq"
 	"naevis/rdx"
+	"naevis/structs"
 	"naevis/userdata"
 	"naevis/utils"
 	"net/http"
@@ -24,7 +23,6 @@ import (
 )
 
 func AddMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	ctx := r.Context()
 	entityType := ps.ByName("entitytype")
 	entityID := ps.ByName("entityid")
 	if entityID == "" {
@@ -44,7 +42,7 @@ func AddMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	media := models.Media{
+	media := structs.Media{
 		EntityID:   entityID,
 		EntityType: entityType,
 		Caption:    r.FormValue("caption"),
@@ -54,9 +52,9 @@ func AddMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	}
 
 	if entityType == "event" {
-		media.MediaID = "e" + utils.GenerateRandomString(16)
+		media.ID = "e" + utils.GenerateID(16)
 	} else {
-		media.MediaID = "p" + utils.GenerateRandomString(16)
+		media.ID = "p" + utils.GenerateID(16)
 	}
 
 	files := r.MultipartForm.File["media"]
@@ -96,9 +94,10 @@ func AddMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 	if media.Type == "video" {
 		media.FileSize = header.Size
-		media.Duration = feed.ExtractVideoDuration(fullPath)
-		posterPath := filepath.Join(filemgr.ResolvePath(filemgr.EntityMedia, filemgr.PicThumb), media.MediaID)
-		if err := feed.CreatePoster(fullPath, posterPath); err != nil {
+		media.Duration = ExtractVideoDuration(fullPath)
+
+		posterPath := filepath.Join(filemgr.ResolvePath(filemgr.EntityMedia, filemgr.PicThumb), media.ID+".jpg")
+		if err := feed.CreatePoster(fullPath, posterPath, "00:00:01"); err != nil {
 			fmt.Printf("Poster creation failed: %v\n", err)
 		} else {
 			fmt.Printf("Poster created at %s\n", posterPath)
@@ -111,11 +110,11 @@ func AddMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	userdata.SetUserData("media", media.MediaID, requestingUserID, entityType, entityID)
+	userdata.SetUserData("media", media.ID, requestingUserID, entityType, entityID)
 
-	go mq.Emit(ctx, "media-created", models.Index{
+	go mq.Emit("media-created", mq.Index{
 		EntityType: "media",
-		EntityId:   media.MediaID,
+		EntityId:   media.ID,
 		Method:     "POST",
 		ItemType:   entityType,
 		ItemId:     entityID,
@@ -125,8 +124,12 @@ func AddMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	json.NewEncoder(w).Encode(media)
 }
 
+func ExtractVideoDuration(savePath string) int {
+	_ = savePath
+	return 5
+}
+
 func EditMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	ctx := r.Context()
 	entityType := ps.ByName("entitytype")
 	entityID := ps.ByName("entityid")
 	mediaID := ps.ByName("id")
@@ -141,11 +144,11 @@ func EditMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	}
 
 	// Fetch the media from MongoDB
-	var media models.Media
+	var media structs.Media
 	err = db.MediaCollection.FindOne(r.Context(), bson.M{
 		"entityid":   entityID,
 		"entitytype": entityType,
-		"mediaid":    mediaID,
+		"id":         mediaID,
 	}).Decode(&media)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -160,8 +163,8 @@ func EditMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	mediaJSON, _ := json.Marshal(media)
 	rdx.RdxSet(cacheKey, string(mediaJSON))
 
-	m := models.Index{EntityType: "media", EntityId: mediaID, Method: "{PUT}", ItemType: entityType, ItemId: entityID}
-	go mq.Emit(ctx, "media-edited", m)
+	m := mq.Index{EntityType: "media", EntityId: mediaID, Method: "{PUT}", ItemType: entityType, ItemId: entityID}
+	go mq.Emit("media-edited", m)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(media)
@@ -172,11 +175,11 @@ func GetMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	entityID := ps.ByName("entityid")
 	mediaID := ps.ByName("id")
 
-	var media models.Media
+	var media structs.Media
 	err := db.MediaCollection.FindOne(r.Context(), bson.M{
 		"entityid":   entityID,
 		"entitytype": entityType,
-		"mediaid":    mediaID,
+		"id":         mediaID,
 	}).Decode(&media)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -191,50 +194,35 @@ func GetMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	json.NewEncoder(w).Encode(media)
 }
 
-// Media
 func GetMedias(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
+	entityType := ps.ByName("entitytype")
+	entityID := ps.ByName("entityid")
 
-	filter := bson.M{"entityid": ps.ByName("entityid"), "entitytype": ps.ByName("entitytype")}
-	medias, err := utils.FindAndDecode[models.Media](ctx, db.MediaCollection, filter)
+	cursor, err := db.MediaCollection.Find(r.Context(), bson.M{
+		"entityid":   entityID,
+		"entitytype": entityType,
+	})
 	if err != nil {
-		utils.Error(w, http.StatusInternalServerError, "Failed to retrieve media")
+		http.Error(w, "Failed to retrieve media", http.StatusInternalServerError)
 		return
 	}
-	utils.JSON(w, http.StatusOK, medias)
+	defer cursor.Close(r.Context())
+
+	var medias []structs.Media
+	if err = cursor.All(r.Context(), &medias); err != nil {
+		http.Error(w, "Failed to parse media", http.StatusInternalServerError)
+		return
+	}
+
+	if len(medias) == 0 {
+		medias = []structs.Media{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(medias)
 }
 
-// func GetMedias(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-// 	entityType := ps.ByName("entitytype")
-// 	entityID := ps.ByName("entityid")
-
-// 	cursor, err := db.MediaCollection.Find(r.Context(), bson.M{
-// 		"entityid":   entityID,
-// 		"entitytype": entityType,
-// 	})
-// 	if err != nil {
-// 		http.Error(w, "Failed to retrieve media", http.StatusInternalServerError)
-// 		return
-// 	}
-// 	defer cursor.Close(r.Context())
-
-// 	var medias []models.Media
-// 	if err = cursor.All(r.Context(), &medias); err != nil {
-// 		http.Error(w, "Failed to parse media", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	if len(medias) == 0 {
-// 		medias = []models.Media{}
-// 	}
-
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(medias)
-// }
-
 func DeleteMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	ctx := r.Context()
 	entityType := ps.ByName("entitytype")
 	entityID := ps.ByName("entityid")
 	mediaID := ps.ByName("id")
@@ -249,7 +237,7 @@ func DeleteMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	_, err := db.MediaCollection.DeleteOne(r.Context(), bson.M{
 		"entityid":   entityID,
 		"entitytype": entityType,
-		"mediaid":    mediaID,
+		"id":         mediaID,
 	})
 	if err != nil {
 		http.Error(w, "Failed to delete media", http.StatusInternalServerError)
@@ -258,8 +246,8 @@ func DeleteMedia(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 	userdata.DelUserData("media", mediaID, requestingUserID)
 
-	m := models.Index{EntityType: "media", EntityId: mediaID, Method: "DELETE", ItemType: entityType, ItemId: entityID}
-	go mq.Emit(ctx, "media-deleted", m)
+	m := mq.Index{EntityType: "media", EntityId: mediaID, Method: "DELETE", ItemType: entityType, ItemId: entityID}
+	go mq.Emit("media-deleted", m)
 
 	// Respond with success
 	w.WriteHeader(http.StatusOK)

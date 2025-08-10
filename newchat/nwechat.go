@@ -289,7 +289,7 @@ func readPump(c *Client, hub *Hub) {
 		switch in.Action {
 		case "chat":
 			msg := Message{
-				MessageID: utils.GenerateIntID(16),
+				MessageID: utils.GenerateRandomString(16),
 				Room:      c.Room,
 				SenderID:  c.UserID,
 				Content:   in.Content,
@@ -400,7 +400,7 @@ func UploadHandler(hub *Hub) httprouter.Handle {
 		io.Copy(dst, file)
 
 		msg := Message{
-			MessageID: utils.GenerateIntID(16),
+			MessageID: utils.GenerateRandomString(16),
 			Room:      room,
 			SenderID:  claims.UserID,
 			Filename:  hdr.Filename,

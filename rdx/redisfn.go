@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"naevis/db"
-	"naevis/structs"
+	"naevis/models"
 	"time"
 )
 
@@ -13,14 +13,14 @@ func FlushRedisMessages() {
 	ticker := time.NewTicker(30 * time.Second)
 	for range ticker.C {
 		// Get all keys matching chat:*:messages.
-		keys, err := Conn.Keys(structs.Ctx, "chat:*:messages").Result()
+		keys, err := Conn.Keys(models.Ctx, "chat:*:messages").Result()
 		if err != nil {
 			log.Println("Redis scan error:", err)
 			continue
 		}
 		for _, key := range keys {
 			// Retrieve all messages from Redis.
-			msgs, err := Conn.LRange(structs.Ctx, key, 0, -1).Result()
+			msgs, err := Conn.LRange(models.Ctx, key, 0, -1).Result()
 			if err != nil {
 				log.Println("Redis LRange error:", err)
 				continue
@@ -30,7 +30,7 @@ func FlushRedisMessages() {
 			}
 			var messagesBulk []interface{}
 			for _, mStr := range msgs {
-				var m structs.Message
+				var m models.Message
 				if err := json.Unmarshal([]byte(mStr), &m); err != nil {
 					log.Println("JSON unmarshal error:", err)
 					continue
@@ -38,13 +38,13 @@ func FlushRedisMessages() {
 				messagesBulk = append(messagesBulk, m)
 			}
 			if len(messagesBulk) > 0 {
-				_, err := db.MessagesCollection.InsertMany(structs.Ctx, messagesBulk)
+				_, err := db.MessagesCollection.InsertMany(models.Ctx, messagesBulk)
 				if err != nil {
 					log.Println("MongoDB InsertMany error:", err)
 					continue
 				}
 				// Remove the key from Redis after successful insertion.
-				Conn.Del(structs.Ctx, key)
+				Conn.Del(models.Ctx, key)
 			}
 		}
 	}

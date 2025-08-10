@@ -8,9 +8,9 @@ import (
 	"naevis/db"
 	"naevis/filemgr"
 	"naevis/globals"
+	"naevis/models"
 	"naevis/mq"
 	"naevis/rdx"
-	"naevis/structs"
 	"naevis/userdata"
 	"naevis/utils"
 	"net/http"
@@ -25,41 +25,65 @@ import (
 
 // var bannerDir string = "./static/placepic"
 
-func GetPlaces(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	w.Header().Set("Content-Type", "application/json")
+// Places
+func GetPlaces(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
 
-	// // Check if places are cached
-	// cachedPlaces, err := rdx.RdxGet("places")
-	// if err == nil && cachedPlaces != "" {
-	// 	// Return cached places if available
-	// 	w.Write([]byte(cachedPlaces))
-	// 	return
-	// }
+	// Try cache
+	if cached, _ := rdx.RdxGet("places"); cached != "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(cached))
+		return
+	}
 
-	cursor, err := db.PlacesCollection.Find(context.TODO(), bson.M{})
+	places, err := utils.FindAndDecode[models.Place](ctx, db.PlacesCollection, bson.M{})
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer cursor.Close(context.TODO())
-
-	var places []structs.Place
-	if err = cursor.All(context.TODO(), &places); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		utils.Error(w, http.StatusInternalServerError, "Failed to fetch places")
 		return
 	}
 
-	// Cache the result
-	placesJSON, _ := json.Marshal(places)
-	rdx.RdxSet("places", string(placesJSON))
-
-	if places == nil {
-		places = []structs.Place{}
-	}
-
-	// Encode and return places data
-	json.NewEncoder(w).Encode(places)
+	data := utils.ToJSON(places) // or json.Marshal
+	rdx.RdxSet("places", string(data))
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
 }
+
+// func GetPlaces(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+// 	w.Header().Set("Content-Type", "application/json")
+
+// 	// // Check if places are cached
+// 	// cachedPlaces, err := rdx.RdxGet("places")
+// 	// if err == nil && cachedPlaces != "" {
+// 	// 	// Return cached places if available
+// 	// 	w.Write([]byte(cachedPlaces))
+// 	// 	return
+// 	// }
+
+// 	cursor, err := db.PlacesCollection.Find(context.TODO(), bson.M{})
+// 	if err != nil {
+// 		http.Error(w, err.Error(), http.StatusInternalServerError)
+// 		return
+// 	}
+// 	defer cursor.Close(context.TODO())
+
+// 	var places []models.Place
+// 	if err = cursor.All(context.TODO(), &places); err != nil {
+// 		http.Error(w, err.Error(), http.StatusInternalServerError)
+// 		return
+// 	}
+
+// 	// Cache the result
+// 	placesJSON, _ := json.Marshal(places)
+// 	rdx.RdxSet("places", string(placesJSON))
+
+// 	if places == nil {
+// 		places = []models.Place{}
+// 	}
+
+// 	// Encode and return places data
+// 	json.NewEncoder(w).Encode(places)
+// }
 
 func GetPlace(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	id := ps.ByName("placeid")
@@ -77,7 +101,7 @@ func GetPlace(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	}
 	defer cursor.Close(context.TODO())
 
-	var place structs.Place
+	var place models.Place
 	if cursor.Next(context.TODO()) {
 		if err := cursor.Decode(&place); err != nil {
 			http.Error(w, "Failed to decode place data", http.StatusInternalServerError)
@@ -118,7 +142,7 @@ func GetPlaceQ(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	}
 	defer cursor.Close(context.TODO())
 
-	var place structs.Place
+	var place models.Place
 	if cursor.Next(context.TODO()) {
 		if err := cursor.Decode(&place); err != nil {
 			http.Error(w, "Failed to decode place data", http.StatusInternalServerError)
@@ -197,10 +221,10 @@ func GetPlaceQ(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 // }
 
 // // Parses and validates form data for places
-func parsePlaceFormData(_ http.ResponseWriter, r *http.Request) (structs.Place, error) {
+func parsePlaceFormData(_ http.ResponseWriter, r *http.Request) (models.Place, error) {
 	err := r.ParseMultipartForm(10 << 20) // 10MB limit
 	if err != nil {
-		return structs.Place{}, fmt.Errorf("unable to parse form")
+		return models.Place{}, fmt.Errorf("unable to parse form")
 	}
 
 	name := strings.TrimSpace(r.FormValue("name"))
@@ -210,12 +234,12 @@ func parsePlaceFormData(_ http.ResponseWriter, r *http.Request) (structs.Place, 
 	capacityStr := strings.TrimSpace(r.FormValue("capacity"))
 
 	if name == "" || address == "" || description == "" || category == "" || capacityStr == "" {
-		return structs.Place{}, fmt.Errorf("all required fields must be filled")
+		return models.Place{}, fmt.Errorf("all required fields must be filled")
 	}
 
 	capacity, err := strconv.Atoi(capacityStr)
 	if err != nil || capacity <= 0 {
-		return structs.Place{}, fmt.Errorf("capacity must be a positive integer")
+		return models.Place{}, fmt.Errorf("capacity must be a positive integer")
 	}
 
 	// Optional fields
@@ -230,8 +254,8 @@ func parsePlaceFormData(_ http.ResponseWriter, r *http.Request) (structs.Place, 
 		bannerFilename, _ = filemgr.SaveFormFile(r.MultipartForm, "banner", filemgr.EntityPlace, filemgr.PicBanner, false)
 	}
 
-	return structs.Place{
-		PlaceID:     utils.GenerateID(14),
+	return models.Place{
+		PlaceID:     utils.GenerateRandomString(14),
 		Name:        name,
 		Address:     address,
 		Description: description,
@@ -248,10 +272,10 @@ func parsePlaceFormData(_ http.ResponseWriter, r *http.Request) (structs.Place, 
 	}, nil
 }
 
-// func parsePlaceFormData(_ http.ResponseWriter, r *http.Request) (structs.Place, error) {
+// func parsePlaceFormData(_ http.ResponseWriter, r *http.Request) (models.Place, error) {
 // 	err := r.ParseMultipartForm(10 << 20) // 10MB limit
 // 	if err != nil {
-// 		return structs.Place{}, fmt.Errorf("unable to parse form")
+// 		return models.Place{}, fmt.Errorf("unable to parse form")
 // 	}
 
 // 	// Required fields
@@ -262,12 +286,12 @@ func parsePlaceFormData(_ http.ResponseWriter, r *http.Request) (structs.Place, 
 // 	capacityStr := strings.TrimSpace(r.FormValue("capacity"))
 
 // 	if name == "" || address == "" || description == "" || category == "" || capacityStr == "" {
-// 		return structs.Place{}, fmt.Errorf("all required fields must be filled")
+// 		return models.Place{}, fmt.Errorf("all required fields must be filled")
 // 	}
 
 // 	capacity, err := strconv.Atoi(capacityStr)
 // 	if err != nil || capacity <= 0 {
-// 		return structs.Place{}, fmt.Errorf("capacity must be a positive integer")
+// 		return models.Place{}, fmt.Errorf("capacity must be a positive integer")
 // 	}
 
 // 	// Optional fields
@@ -286,7 +310,7 @@ func parsePlaceFormData(_ http.ResponseWriter, r *http.Request) (structs.Place, 
 // 		// Actual storage logic goes here...
 // 	}
 
-// 	return structs.Place{
+// 	return models.Place{
 // 		PlaceID:     utils.GenerateID(14),
 // 		Name:        name,
 // 		Address:     address,
@@ -306,6 +330,7 @@ func parsePlaceFormData(_ http.ResponseWriter, r *http.Request) (structs.Place, 
 
 // Creates a new place
 func CreatePlace(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	ctx := r.Context()
 	place, err := parsePlaceFormData(w, r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -330,7 +355,7 @@ func CreatePlace(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	autocom.AddPlaceToAutocorrect(rdx.Conn, place.PlaceID, place.Name)
 
 	userdata.SetUserData("place", place.PlaceID, requestingUserID, "", "")
-	go mq.Emit("place-created", mq.Index{EntityType: "place", EntityId: place.PlaceID, Method: "POST"})
+	go mq.Emit(ctx, "place-created", models.Index{EntityType: "place", EntityId: place.PlaceID, Method: "POST"})
 
 	utils.RespondWithJSON(w, http.StatusCreated, place)
 }

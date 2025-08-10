@@ -7,7 +7,7 @@ import (
 	"log"
 	"naevis/db"
 	"naevis/middleware"
-	"naevis/structs"
+	"naevis/models"
 	"net/http"
 	"time"
 
@@ -50,7 +50,7 @@ func DelUserData(dataType string, dataId string, userId string) {
 }
 
 func AddUserData(entityType, entityId, userId, itemType, itemId string) {
-	var content structs.UserData
+	var content models.UserData
 	content.EntityID = entityId
 	content.EntityType = entityType
 	content.ItemID = itemId
@@ -110,7 +110,7 @@ func GetUserProfileData(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 	}
 	defer cursor.Close(context.TODO())
 
-	var results []structs.UserData
+	var results []models.UserData
 	if err := cursor.All(context.TODO(), &results); err != nil {
 		http.Error(w, "Failed to decode user data", http.StatusInternalServerError)
 		log.Printf("Error decoding user data: %v", err)
@@ -118,7 +118,7 @@ func GetUserProfileData(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 	}
 	fmt.Println(results)
 	if len(results) == 0 {
-		results = []structs.UserData{}
+		results = []models.UserData{}
 	}
 
 	// Respond with the results
@@ -130,7 +130,7 @@ func GetUserProfileData(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 	}
 }
 
-func AddUserDataBatch(docs []structs.UserData) {
+func AddUserDataBatch(docs []models.UserData) {
 	var toInsert []interface{}
 	for _, doc := range docs {
 		toInsert = append(toInsert, doc)

@@ -15,7 +15,7 @@ import (
 )
 
 func GetArtistsAlbums(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	albums := []Album{
+	albums := []models.ArtistAlbum{
 		{Title: "Nightfall", ReleaseDate: "2023-10-01", Description: "A journey through dusk.", Published: true},
 		{Title: "Unreleased Gems", ReleaseDate: "2025-01-01", Description: "Upcoming exclusives.", Published: false},
 	}
@@ -38,7 +38,7 @@ func GetArtistsMerch(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 }
 
 func GetArtistsevents(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	events := []Event{
+	events := []models.ArtistEvent{
 		{Title: "Summer Fest 2025", Date: "2025-06-15", Venue: "Sunset Arena", City: "Los Angeles", Country: "USA", TicketURL: "http://localhost:5173/event/4s89t5jt6754djt"},
 		{Title: "Berlin Beats", Date: "2025-07-20", Venue: "Techno Temple", City: "Berlin", Country: "Germany"},
 	}

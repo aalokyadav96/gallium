@@ -79,6 +79,7 @@ func setupRouter(rateLimiter *ratelim.RateLimiter) *httprouter.Router {
 	routes.AddMapRoutes(router, rateLimiter)
 	routes.AddMediaRoutes(router, rateLimiter)
 	routes.AddMerchRoutes(router, rateLimiter)
+	routes.AddNewSearchRoutes(router, rateLimiter)
 	routes.AddPlaceRoutes(router, rateLimiter)
 	routes.AddPlaceTabRoutes(router, rateLimiter)
 	routes.AddPostRoutes(router, rateLimiter)
@@ -121,8 +122,8 @@ func main() {
 
 	// build router and add chat routes with hub
 	router := setupRouter(rateLimiter)
-	routes.AddChatRoutes(router, rateLimiter)         // existing chat routes without hub
-	routes.AddNewChatRoutes(router, hub, rateLimiter) // newchat routes that need hub
+	routes.AddChatRoutes(router, rateLimiter)
+	routes.AddNewChatRoutes(router, hub, rateLimiter)
 
 	// apply middleware: CORS → security headers → logging → router
 	corsHandler := cors.New(cors.Options{
@@ -144,11 +145,13 @@ func main() {
 		ReadHeaderTimeout: 2 * time.Second,
 	}
 
+	// start indexing worker in background
+	// go mq.StartIndexingWorker()
+
 	// on shutdown: stop chat hub, cleanup
 	server.RegisterOnShutdown(func() {
 		log.Println("🛑 Shutting down chat hub...")
-		hub.Stop() // implement Stop() in newchat.Hub to close all connections
-		// close DB connections, flush logs, etc.
+		hub.Stop()
 	})
 
 	// start server

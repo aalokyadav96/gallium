@@ -8,7 +8,6 @@ import (
 	"naevis/middleware"
 	"naevis/models"
 	"naevis/mq"
-	"naevis/structs"
 	"naevis/userdata"
 	"naevis/utils"
 	"net/http"
@@ -19,32 +18,48 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
-// Get Artist Events
+// Artist Events
 func GetArtistEvents(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	artistID := ps.ByName("id")
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
 
-	var artistevents []models.ArtistEvent
-	cursor, err := db.ArtistEventsCollection.Find(context.TODO(), bson.M{"artistid": artistID})
+	filter := bson.M{"artistid": ps.ByName("id")}
+	artistevents, err := utils.FindAndDecode[models.ArtistEvent](ctx, db.ArtistEventsCollection, filter)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, "Database error")
-		return
-	}
-	defer cursor.Close(context.TODO())
-
-	if err := cursor.All(context.TODO(), &artistevents); err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to parse artistevents")
+		utils.Error(w, http.StatusInternalServerError, "Failed to fetch artist events")
 		return
 	}
 
-	if artistevents == nil {
-		artistevents = []models.ArtistEvent{}
-	}
-
-	utils.RespondWithJSON(w, http.StatusOK, artistevents)
+	utils.JSON(w, http.StatusOK, artistevents)
 }
 
-// Create Artist Event
+// // Get Artist Events
+// func GetArtistEvents(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+// 	artistID := ps.ByName("id")
+
+// 	var artistevents []models.ArtistEvent
+// 	cursor, err := db.ArtistEventsCollection.Find(context.TODO(), bson.M{"artistid": artistID})
+// 	if err != nil {
+// 		utils.RespondWithError(w, http.StatusInternalServerError, "Database error")
+// 		return
+// 	}
+// 	defer cursor.Close(context.TODO())
+
+// 	if err := cursor.All(context.TODO(), &artistevents); err != nil {
+// 		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to parse artistevents")
+// 		return
+// 	}
+
+// 	if artistevents == nil {
+// 		artistevents = []models.ArtistEvent{}
+// 	}
+
+// 	utils.RespondWithJSON(w, http.StatusOK, artistevents)
+// }
+
 func CreateArtistEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
+
 	var artistevent models.ArtistEvent
 	if err := json.NewDecoder(r.Body).Decode(&artistevent); err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "Invalid request payload")
@@ -52,29 +67,67 @@ func CreateArtistEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	}
 
 	artistevent.ArtistID = ps.ByName("id")
-	artistevent.EventID = utils.GenerateID(14)
-	insertResult, err := db.ArtistEventsCollection.InsertOne(context.TODO(), artistevent)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, "Database error")
-		return
-	}
 
 	tokenString := r.Header.Get("Authorization")
 	claims, err := middleware.ValidateJWT(tokenString)
 	if err != nil {
-		log.Printf("JWT validation error: %v", err) // Log the error for debugging
+		log.Printf("JWT validation error: %v", err)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	artistevent.CreatorID = claims.UserID
-	addEventToDB(artistevent)
+	artistevent.EventID = utils.GenerateRandomString(14)
+
+	insertResult, err := db.ArtistEventsCollection.InsertOne(ctx, artistevent)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Database error")
+		return
+	}
+
+	if _, err := addEventToDB(ctx, artistevent); err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to add event")
+		return
+	}
 
 	utils.RespondWithJSON(w, http.StatusCreated, map[string]interface{}{
 		"message": "ArtistEvent created successfully",
 		"id":      insertResult.InsertedID,
 	})
 }
+
+// // Create Artist Event
+// func CreateArtistEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+// 	var artistevent models.ArtistEvent
+// 	if err := json.NewDecoder(r.Body).Decode(&artistevent); err != nil {
+// 		utils.RespondWithError(w, http.StatusBadRequest, "Invalid request payload")
+// 		return
+// 	}
+
+// 	artistevent.ArtistID = ps.ByName("id")
+// 	artistevent.EventID = utils.GenerateID(14)
+// 	insertResult, err := db.ArtistEventsCollection.InsertOne(context.TODO(), artistevent)
+// 	if err != nil {
+// 		utils.RespondWithError(w, http.StatusInternalServerError, "Database error")
+// 		return
+// 	}
+
+// 	tokenString := r.Header.Get("Authorization")
+// 	claims, err := middleware.ValidateJWT(tokenString)
+// 	if err != nil {
+// 		log.Printf("JWT validation error: %v", err) // Log the error for debugging
+// 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+// 		return
+// 	}
+
+// 	artistevent.CreatorID = claims.UserID
+// 	addEventToDB(artistevent)
+
+// 	utils.RespondWithJSON(w, http.StatusCreated, map[string]interface{}{
+// 		"message": "ArtistEvent created successfully",
+// 		"id":      insertResult.InsertedID,
+// 	})
+// }
 
 // Update Artist Event
 func UpdateArtistEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -108,23 +161,19 @@ func DeleteArtistEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "ArtistEvent deleted successfully"})
 }
 
-func addEventToDB(artistEvent models.ArtistEvent) (string, error) {
-	var event structs.Event
-
-	// dateString := "2025-04-29 10:00:00"
-	// layout := "2006-01-02 15:04:05" // Format string must match the input string
+func addEventToDB(ctx context.Context, artistEvent models.ArtistEvent) (string, error) {
+	var event models.Event
 
 	dateString := artistEvent.Date
 	layout := "2006-01-02"
 
 	dateToSave, _ := time.Parse(layout, dateString)
 
-	// event.CreatorID = artistEvent.ArtistID
 	event.CreatorID = artistEvent.CreatorID
-	event.CreatedAt = time.Now().UTC() // ✅ Ensure UTC timestamp
-	event.Date = dateToSave.UTC()      // ✅ Force UTC before saving
+	event.CreatedAt = time.Now().UTC()
+	event.Date = dateToSave.UTC()
 	event.Status = "active"
-	event.FAQs = []structs.FAQ{}
+	event.FAQs = []models.FAQ{}
 	event.EventID = artistEvent.EventID
 	event.Artists = []string{artistEvent.ArtistID}
 	event.Title = artistEvent.Title
@@ -132,8 +181,8 @@ func addEventToDB(artistEvent models.ArtistEvent) (string, error) {
 	event.Published = "draft"
 	event.Category = "concert"
 
-	// Insert the event into MongoDB
-	result, err := db.EventsCollection.InsertOne(context.TODO(), event)
+	// Use ctx here
+	result, err := db.EventsCollection.InsertOne(ctx, event)
 	if err != nil || result.InsertedID == nil {
 		log.Printf("Error inserting event into MongoDB: %v", err)
 		return "", err
@@ -141,12 +190,53 @@ func addEventToDB(artistEvent models.ArtistEvent) (string, error) {
 
 	userdata.SetUserData("event", event.EventID, artistEvent.ArtistID, "", "")
 
-	// ✅ Emit event for messaging queue (if needed)
-	go mq.Emit("event-created", mq.Index{
+	// Pass ctx to Emit
+	go mq.Emit(ctx, "event-created", models.Index{
 		EntityType: "event", EntityId: event.EventID, Method: "POST",
 	})
+
 	return "", err
 }
+
+// func addEventToDB(artistEvent models.ArtistEvent) (string, error) {
+// 	var event models.Event
+
+// 	// dateString := "2025-04-29 10:00:00"
+// 	// layout := "2006-01-02 15:04:05" // Format string must match the input string
+
+// 	dateString := artistEvent.Date
+// 	layout := "2006-01-02"
+
+// 	dateToSave, _ := time.Parse(layout, dateString)
+
+// 	// event.CreatorID = artistEvent.ArtistID
+// 	event.CreatorID = artistEvent.CreatorID
+// 	event.CreatedAt = time.Now().UTC() // ✅ Ensure UTC timestamp
+// 	event.Date = dateToSave.UTC()      // ✅ Force UTC before saving
+// 	event.Status = "active"
+// 	event.FAQs = []models.FAQ{}
+// 	event.EventID = artistEvent.EventID
+// 	event.Artists = []string{artistEvent.ArtistID}
+// 	event.Title = artistEvent.Title
+// 	event.Location = artistEvent.Venue
+// 	event.Published = "draft"
+// 	event.Category = "concert"
+
+// 	// Insert the event into MongoDB
+// 	result, err := db.EventsCollection.InsertOne(context.TODO(), event)
+// 	if err != nil || result.InsertedID == nil {
+// 		log.Printf("Error inserting event into MongoDB: %v", err)
+// 		return "", err
+// 	}
+
+// 	userdata.SetUserData("event", event.EventID, artistEvent.ArtistID, "", "")
+
+// 	// ✅ Emit event for messaging queue (if needed)
+// 	go mq.Emit("event-created", models.Index{
+// 		EntityType: "event", EntityId: event.EventID, Method: "POST",
+// 	})
+// 	return "", err
+// }
 
 func AddArtistToEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	type RequestPayload struct {
@@ -164,7 +254,7 @@ func AddArtistToEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Para
 	payload.ArtistID = ps.ByName("id")
 
 	// Fetch event details from EventsCollection
-	var event structs.Event
+	var event models.Event
 	err := db.EventsCollection.FindOne(context.TODO(), bson.M{"eventid": payload.EventID}).Decode(&event)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusNotFound, "Event not found")

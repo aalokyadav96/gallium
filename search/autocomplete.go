@@ -1,87 +1,99 @@
 package search
 
 import (
+	"context"
 	"encoding/json"
-	"fmt"
 	"log"
-	"naevis/globals"
+	"net/http"
 	"strings"
 	"time"
+
+	"naevis/globals"
+
+	"github.com/julienschmidt/httprouter"
+	"github.com/redis/go-redis/v9"
 )
 
-// AddWord inserts a word into the Trie and saves it in Redis.
-func (t *TrieNode) AddWord(word string) error {
-	node := t
-	for _, ch := range word {
-		if node.Children == nil {
-			node.Children = make(map[rune]*TrieNode)
-		}
-		if _, exists := node.Children[ch]; !exists {
-			node.Children[ch] = NewTrieNode()
-		}
-		node = node.Children[ch]
-	}
-	node.IsWord = true
-
-	// Also store the word in Redis for persistence.
-	return SaveAutocompleteWord(word)
+// Redis key helpers for autocomplete
+func autocompleteZSet() string { return "autocomplete:zset" }
+func autocompleteCacheKey(prefix string) string {
+	return "autocomplete_cache:" + prefix
 }
 
-// SaveAutocompleteWord stores an autocomplete word in Redis.
-func SaveAutocompleteWord(word string) error {
-	key := fmt.Sprintf("autocomplete:%s", word)
-	return globals.RedisClient.Set(ctx, key, 1, 0).Err() // No expiration, acts as a unique set.
+// Add words to autocomplete index
+func AddAutocompleteWords(ctx context.Context, words []string) error {
+	if len(words) == 0 {
+		return nil
+	}
+	pipe := globals.RedisClient.Pipeline()
+	for _, w := range words {
+		if w != "" {
+			pipe.ZAdd(ctx, autocompleteZSet(), redis.Z{Score: 0, Member: w})
+		}
+	}
+	_, err := pipe.Exec(ctx)
+	return err
 }
 
-// GetWordsWithPrefix fetches autocomplete suggestions from Redis.
-func GetWordsWithPrefix(prefix string) ([]string, error) {
-	prefix = strings.ToLower(prefix)
-	cacheKey := fmt.Sprintf("autocomplete_cache:%s", prefix)
-
-	// Check if results exist in cache.
-	if cached, err := GetCachedAutocompleteResults(cacheKey); err == nil {
-		return cached, nil
+// Get autocomplete suggestions with optional Redis caching
+func GetAutocompleteSuggestions(ctx context.Context, prefix string, limit int, ttl time.Duration) ([]string, error) {
+	prefix = strings.ToLower(strings.TrimSpace(prefix))
+	if prefix == "" {
+		return nil, nil
 	}
 
-	// Use Redis SCAN command to find matching keys.
-	iter := globals.RedisClient.Scan(ctx, 0, fmt.Sprintf("autocomplete:%s*", prefix), 100).Iterator()
-	var results []string
-	for iter.Next(ctx) {
-		results = append(results, strings.TrimPrefix(iter.Val(), "autocomplete:"))
+	cacheKey := autocompleteCacheKey(prefix)
+	if data, err := globals.RedisClient.Get(ctx, cacheKey).Result(); err == nil {
+		var res []string
+		if json.Unmarshal([]byte(data), &res) == nil {
+			if len(res) > limit {
+				return res[:limit], nil
+			}
+			return res, nil
+		}
 	}
-	if err := iter.Err(); err != nil {
+
+	min := "[" + prefix
+	max := "[" + prefix + "\xff"
+	words, err := globals.RedisClient.ZRangeByLex(ctx, autocompleteZSet(), &redis.ZRangeBy{
+		Min:    min,
+		Max:    max,
+		Offset: 0,
+		Count:  int64(limit),
+	}).Result()
+	if err != nil {
 		return nil, err
 	}
 
-	// Cache the results in Redis for faster future lookups.
-	if err := CacheAutocompleteResults(cacheKey, results); err != nil {
-		log.Println("Error caching autocomplete results:", err)
+	if ttl > 0 {
+		if data, err := json.Marshal(words); err == nil {
+			_ = globals.RedisClient.Set(ctx, cacheKey, data, ttl).Err()
+		}
 	}
-	return results, nil
+	return words, nil
 }
 
-// -------------------------
-// REDIS CACHING HELPERS
-// -------------------------
+// HTTP handler for autocomplete
+func Autocompleter(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	prefix := strings.TrimSpace(r.URL.Query().Get("prefix"))
+	if prefix == "" {
+		http.Error(w, "Search prefix is required", http.StatusBadRequest)
+		return
+	}
 
-// CacheAutocompleteResults stores autocomplete suggestions in Redis with an expiration.
-func CacheAutocompleteResults(key string, results []string) error {
+	results, err := GetAutocompleteSuggestions(r.Context(), strings.ToLower(prefix), 20, time.Minute)
+	if err != nil {
+		log.Printf("Autocompleter error: %v", err)
+		http.Error(w, "Error retrieving autocomplete suggestions", http.StatusInternalServerError)
+		return
+	}
+
 	data, err := json.Marshal(results)
 	if err != nil {
-		return err
+		http.Error(w, "Error encoding autocomplete results", http.StatusInternalServerError)
+		return
 	}
-	return globals.RedisClient.Set(ctx, key, data, time.Hour).Err()
-}
-
-// GetCachedAutocompleteResults retrieves cached autocomplete suggestions.
-func GetCachedAutocompleteResults(key string) ([]string, error) {
-	data, err := globals.RedisClient.Get(ctx, key).Result()
-	if err != nil {
-		return nil, err
-	}
-	var results []string
-	if err = json.Unmarshal([]byte(data), &results); err != nil {
-		return nil, err
-	}
-	return results, nil
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
 }

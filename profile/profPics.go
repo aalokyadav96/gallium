@@ -2,6 +2,7 @@ package profile
 
 import (
 	"naevis/middleware"
+	"naevis/models"
 	"naevis/mq"
 	"net/http"
 
@@ -36,7 +37,7 @@ func EditProfilePic(w http.ResponseWriter, r *http.Request, _ httprouter.Params)
 		return
 	}
 
-	m := mq.Index{}
+	m := models.Index{}
 	mq.Notify("profilepic-updated", m)
 
 	InvalidateCachedProfile(claims.Username)
@@ -75,7 +76,7 @@ func EditProfileBanner(w http.ResponseWriter, r *http.Request, _ httprouter.Para
 		return
 	}
 
-	m := mq.Index{}
+	m := models.Index{}
 	mq.Notify("bannerpic-updated", m)
 
 	InvalidateCachedProfile(claims.Username)

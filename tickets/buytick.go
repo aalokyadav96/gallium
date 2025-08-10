@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"naevis/db"
-	"naevis/structs"
+	"naevis/models"
 	"naevis/utils"
 	"net/http"
 	"time"
@@ -35,7 +35,7 @@ func BuysTicket(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	ctx := context.TODO()
 
 	// Find the ticket
-	var ticket structs.Ticket
+	var ticket models.Ticket
 	err := db.TicketsCollection.FindOne(ctx, bson.M{
 		"ticketid": req.TicketID,
 		"eventid":  req.EventID,
@@ -74,9 +74,9 @@ func BuysTicket(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	}
 
 	// Optional: Save booking info
-	// booking := structs.Booking{
+	// booking := models.Booking{
 	booking := Ticking{
-		BookingID: utils.GenerateID(14),
+		BookingID: utils.GenerateRandomString(14),
 		EventID:   req.EventID,
 		TicketID:  req.TicketID,
 		Quantity:  req.Quantity,

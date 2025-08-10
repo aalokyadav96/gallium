@@ -9,9 +9,9 @@ import (
 	"naevis/db"
 	"naevis/filemgr"
 	"naevis/globals"
+	"naevis/models"
 	"naevis/mq"
 	"naevis/rdx"
-	"naevis/structs"
 	"naevis/userdata"
 	"naevis/utils"
 	"net/http"
@@ -41,6 +41,7 @@ func updatePlaceInDB(w http.ResponseWriter, placeID string, updateFields bson.M)
 	return nil
 }
 func EditPlace(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
 	placeID := ps.ByName("placeid")
 
 	// Validate user
@@ -51,7 +52,7 @@ func EditPlace(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	}
 
 	// Fetch existing place
-	var place structs.Place
+	var place models.Place
 	err := db.PlacesCollection.FindOne(context.TODO(), bson.M{"placeid": placeID}).Decode(&place)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -110,7 +111,7 @@ func EditPlace(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	go mq.Emit("place-edited", mq.Index{EntityType: "place", EntityId: placeID, Method: "PUT"})
+	go mq.Emit(ctx, "place-edited", models.Index{EntityType: "place", EntityId: placeID, Method: "PUT"})
 
 	utils.RespondWithJSON(w, http.StatusOK, updateFields)
 }
@@ -127,7 +128,7 @@ func EditPlace(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 // 	}
 
 // 	// Fetch the existing place
-// 	var place structs.Place
+// 	var place models.Place
 // 	err := db.PlacesCollection.FindOne(context.TODO(), bson.M{"placeid": placeID}).Decode(&place)
 // 	if err != nil {
 // 		if err == mongo.ErrNoDocuments {
@@ -184,14 +185,15 @@ func EditPlace(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 // 	utils.CreateThumb(placeID, bannerDir, ".jpg", 300, 200)
 
-// 	go mq.Emit("place-edited", mq.Index{EntityType: "place", EntityId: placeID, Method: "PUT"})
+// 	go mq.Emit(ctx, "place-edited", models.Index{EntityType: "place", EntityId: placeID, Method: "PUT"})
 
 // 	utils.RespondWithJSON(w, http.StatusOK, updateFields)
 // }
 
 func DeletePlace(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
 	placeID := ps.ByName("placeid")
-	var place structs.Place
+	var place models.Place
 
 	// Get the ID of the requesting user from the context
 	requestingUserID, ok := r.Context().Value(globals.UserIDKey).(string)
@@ -228,8 +230,8 @@ func DeletePlace(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 	userdata.DelUserData("place", placeID, requestingUserID)
 
-	m := mq.Index{EntityType: "place", EntityId: placeID, Method: "DELETE"}
-	go mq.Emit("place-deleted", m)
+	m := models.Index{EntityType: "place", EntityId: placeID, Method: "DELETE"}
+	go mq.Emit(ctx, "place-deleted", m)
 
 	// Respond with success
 	w.WriteHeader(http.StatusOK)

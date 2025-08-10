@@ -7,9 +7,9 @@ import (
 	"naevis/db"
 	"naevis/filemgr"
 	"naevis/globals"
+	"naevis/models"
 	"naevis/mq"
 	"naevis/rdx"
-	"naevis/structs"
 	"naevis/userdata"
 	"naevis/utils"
 	"net/http"
@@ -21,6 +21,7 @@ import (
 )
 
 func CreateMerch(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
 	eventID := ps.ByName("eventid")
 	entityType := ps.ByName("entityType")
 	if eventID == "" {
@@ -51,7 +52,7 @@ func CreateMerch(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	merchID := utils.GenerateID(14)
+	merchID := utils.GenerateRandomString(14)
 
 	imageName, err := filemgr.SaveFormFile(
 		r.MultipartForm,
@@ -65,7 +66,7 @@ func CreateMerch(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	merch := structs.Merch{
+	merch := models.Merch{
 		EntityType: entityType,
 		EntityID:   eventID,
 		Name:       name,
@@ -83,7 +84,7 @@ func CreateMerch(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	go mq.Emit("merch-created", mq.Index{
+	go mq.Emit(ctx, "merch-created", models.Index{
 		EntityType: "merch", EntityId: merch.MerchID, Method: "POST", ItemType: "event", ItemId: eventID,
 	})
 
@@ -140,7 +141,7 @@ func CreateMerch(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 // 	}
 // 	_ = thumbName
 
-// 	merch := structs.Merch{
+// 	merch := models.Merch{
 // 		EntityType: entityType,
 // 		EntityID:   eventID,
 // 		Name:       name,
@@ -158,8 +159,8 @@ func CreateMerch(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 // 		return
 // 	}
 
-// 	m := mq.Index{EntityType: "merch", EntityId: merch.MerchID, Method: "POST", ItemType: "event", ItemId: eventID}
-// 	go mq.Emit("merch-created", m)
+// 	m := models.Index{EntityType: "merch", EntityId: merch.MerchID, Method: "POST", ItemType: "event", ItemId: eventID}
+// 	go mq.Emit(ctx, "merch-created", m)
 
 // 	w.Header().Set("Content-Type", "application/json")
 // 	json.NewEncoder(w).Encode(map[string]any{
@@ -208,7 +209,7 @@ func CreateMerch(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 // 	}
 
 // 	// Create a new Merch instance
-// 	merch := structs.Merch{
+// 	merch := models.Merch{
 // 		// EventID:    eventID,
 // 		EntityType: entityType,
 // 		EntityID:   eventID,
@@ -272,8 +273,8 @@ func CreateMerch(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 // 		return
 // 	}
 
-// 	m := mq.Index{EntityType: "merch", EntityId: merch.MerchID, Method: "POST", ItemType: "event", ItemId: eventID}
-// 	go mq.Emit("merch-created", m)
+// 	m := models.Index{EntityType: "merch", EntityId: merch.MerchID, Method: "POST", ItemType: "event", ItemId: eventID}
+// 	go mq.Emit(ctx, "merch-created", m)
 
 // 	// Respond with the created merchandise
 // 	w.Header().Set("Content-Type", "application/json")
@@ -304,7 +305,7 @@ func GetMerch(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	// }
 
 	// collection := client.Database("eventdb").Collection("merch")
-	var merch structs.Merch
+	var merch models.Merch
 	err := db.MerchCollection.FindOne(context.TODO(), bson.M{"entity_type": entityType, "entity_id": eventID, "merchid": merchID}).Decode(&merch)
 	if err != nil {
 		// http.Error(w, fmt.Sprintf("Merchandise not found: %v", err), http.StatusNotFound)
@@ -324,7 +325,7 @@ func GetMerch(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 func GetMerchPage(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	merchID := ps.ByName("entityType")
 
-	var merch structs.Merch
+	var merch models.Merch
 	err := db.MerchCollection.FindOne(context.TODO(), bson.M{"merchid": merchID}).Decode(&merch)
 	if err != nil {
 		// http.Error(w, fmt.Sprintf("Merchandise not found: %v", err), http.StatusNotFound)
@@ -337,72 +338,101 @@ func GetMerchPage(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 	json.NewEncoder(w).Encode(merch)
 }
 
-// Fetch a list of merchandise items
+// Merch
 func GetMerchs(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
 	eventID := ps.ByName("eventid")
 	entityType := ps.ByName("entityType")
 	cacheKey := fmt.Sprintf("merchlist:%s", eventID)
 
-	fmt.Println(eventID, entityType)
-	// // Check if the merch list is cached
-	// cachedMerchs, err := rdx.RdxGet(cacheKey)
-	// if err == nil && cachedMerchs != "" {
-	// 	// Return cached list
-	// 	w.Header().Set("Content-Type", "application/json")
-	// 	w.Write([]byte(cachedMerchs))
-	// 	return
-	// }
+	if cached, _ := rdx.RdxGet(cacheKey); cached != "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(cached))
+		return
+	}
 
-	// collection := client.Database("eventdb").Collection("merch")
-	var merchList []structs.Merch
 	filter := bson.M{"entity_type": entityType, "entity_id": eventID}
-
-	cursor, err := db.MerchCollection.Find(context.Background(), filter)
+	merchList, err := utils.FindAndDecode[models.Merch](ctx, db.MerchCollection, filter)
 	if err != nil {
-		http.Error(w, "Failed to fetch merchandise", http.StatusInternalServerError)
-		return
-	}
-	defer cursor.Close(context.Background())
-
-	for cursor.Next(context.Background()) {
-		var merch structs.Merch
-		if err := cursor.Decode(&merch); err != nil {
-			http.Error(w, "Failed to decode merchandise", http.StatusInternalServerError)
-			return
-		}
-		merchList = append(merchList, merch)
-	}
-
-	if err := cursor.Err(); err != nil {
-		http.Error(w, "Cursor error", http.StatusInternalServerError)
+		utils.Error(w, http.StatusInternalServerError, "Failed to fetch merchandise")
 		return
 	}
 
-	if len(merchList) == 0 {
-		merchList = []structs.Merch{}
-	}
-
-	// Cache the list
-	merchListJSON, _ := json.Marshal(merchList)
-	rdx.RdxSet(cacheKey, string(merchListJSON))
-
-	if len(merchList) == 0 {
-		merchList = []structs.Merch{}
-	}
-
-	// Respond with the list of merch
+	data := utils.ToJSON(merchList)
+	rdx.RdxSet(cacheKey, string(data))
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(merchList)
+	w.Write(data)
 }
+
+// // Fetch a list of merchandise items
+// func GetMerchs(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+// 	eventID := ps.ByName("eventid")
+// 	entityType := ps.ByName("entityType")
+// 	cacheKey := fmt.Sprintf("merchlist:%s", eventID)
+
+// 	fmt.Println(eventID, entityType)
+// 	// // Check if the merch list is cached
+// 	// cachedMerchs, err := rdx.RdxGet(cacheKey)
+// 	// if err == nil && cachedMerchs != "" {
+// 	// 	// Return cached list
+// 	// 	w.Header().Set("Content-Type", "application/json")
+// 	// 	w.Write([]byte(cachedMerchs))
+// 	// 	return
+// 	// }
+
+// 	// collection := client.Database("eventdb").Collection("merch")
+// 	var merchList []models.Merch
+// 	filter := bson.M{"entity_type": entityType, "entity_id": eventID}
+
+// 	cursor, err := db.MerchCollection.Find(context.Background(), filter)
+// 	if err != nil {
+// 		http.Error(w, "Failed to fetch merchandise", http.StatusInternalServerError)
+// 		return
+// 	}
+// 	defer cursor.Close(context.Background())
+
+// 	for cursor.Next(context.Background()) {
+// 		var merch models.Merch
+// 		if err := cursor.Decode(&merch); err != nil {
+// 			http.Error(w, "Failed to decode merchandise", http.StatusInternalServerError)
+// 			return
+// 		}
+// 		merchList = append(merchList, merch)
+// 	}
+
+// 	if err := cursor.Err(); err != nil {
+// 		http.Error(w, "Cursor error", http.StatusInternalServerError)
+// 		return
+// 	}
+
+// 	if len(merchList) == 0 {
+// 		merchList = []models.Merch{}
+// 	}
+
+// 	// Cache the list
+// 	merchListJSON, _ := json.Marshal(merchList)
+// 	rdx.RdxSet(cacheKey, string(merchListJSON))
+
+// 	if len(merchList) == 0 {
+// 		merchList = []models.Merch{}
+// 	}
+
+// 	// Respond with the list of merch
+// 	w.Header().Set("Content-Type", "application/json")
+// 	json.NewEncoder(w).Encode(merchList)
+// }
 
 // Edit a merchandise item
 func EditMerch(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
 	eventID := ps.ByName("eventid")
 	merchID := ps.ByName("merchid")
 	entityType := ps.ByName("entityType")
 
 	// Parse the request body
-	var merch structs.Merch
+	var merch models.Merch
 	if err := json.NewDecoder(r.Body).Decode(&merch); err != nil {
 		http.Error(w, "Invalid input data", http.StatusBadRequest)
 		return
@@ -447,8 +477,8 @@ func EditMerch(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	// Invalidate the specific merch cache
 	rdx.RdxDel(fmt.Sprintf("merch:%s:%s", eventID, merchID))
 
-	m := mq.Index{EntityType: "merch", EntityId: merchID, Method: "PUT", ItemType: entityType, ItemId: eventID}
-	go mq.Emit("merch-edited", m)
+	m := models.Index{EntityType: "merch", EntityId: merchID, Method: "PUT", ItemType: entityType, ItemId: eventID}
+	go mq.Emit(ctx, "merch-edited", m)
 
 	// Send response
 	// w.Header().Set("Content-Type", "application/json")
@@ -465,6 +495,7 @@ func EditMerch(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 // Delete a merchandise item
 func DeleteMerch(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
 	eventID := ps.ByName("eventid")
 	merchID := ps.ByName("merchid")
 	entityType := ps.ByName("entityType")
@@ -486,8 +517,8 @@ func DeleteMerch(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	// Invalidate the cache
 	rdx.RdxDel(fmt.Sprintf("merch:%s:%s", eventID, merchID))
 
-	m := mq.Index{EntityType: "merch", EntityId: merchID, Method: "DELETE", ItemType: "event", ItemId: eventID}
-	go mq.Emit("merch-deleted", m)
+	m := models.Index{EntityType: "merch", EntityId: merchID, Method: "DELETE", ItemType: "event", ItemId: eventID}
+	go mq.Emit(ctx, "merch-deleted", m)
 
 	// // Send response
 	// w.WriteHeader(http.StatusOK)
@@ -523,7 +554,7 @@ func BuyMerch(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 	// Find the merch in the database
 	// collection := client.Database("eventdb").Collection("merch")
-	var merch structs.Merch // Define the Merch struct based on your schema
+	var merch models.Merch // Define the Merch struct based on your schema
 	err = db.MerchCollection.FindOne(context.TODO(), bson.M{"entity_id": eventID, "merchid": merchID}).Decode(&merch)
 	if err != nil {
 		http.Error(w, "Merch not found or other error", http.StatusNotFound)
@@ -546,7 +577,7 @@ func BuyMerch(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 	userdata.SetUserData("merch", merchID, requestingUserID, merch.EntityType, merch.EntityID)
 
-	m := mq.Index{}
+	m := models.Index{}
 	mq.Notify("merch-bought", m)
 
 	// Respond with success

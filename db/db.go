@@ -61,6 +61,7 @@ var (
 	BaitoCollection             *mongo.Collection
 	BaitoApplicationsCollection *mongo.Collection
 	BaitoWorkerCollection       *mongo.Collection
+	SearchCollection            *mongo.Collection
 )
 
 // limiter chan to cap concurrent Mongo ops
@@ -108,14 +109,15 @@ func init() {
 
 	// Initialize your collections
 	db := Client.Database("eventdb")
+	dbx := Client.Database("naevis")
 	ActivitiesCollection = db.Collection("activities")
 	AnalyticsCollection = db.Collection("analytics")
 	ArtistEventsCollection = db.Collection("artistevents")
 	ArtistsCollection = db.Collection("artists")
-	BaitoCollection = db.Collection("baito")
+	BaitoCollection = db.Collection("baitos")
 	BaitoApplicationsCollection = db.Collection("baitoapply")
 	BaitoWorkerCollection = db.Collection("baitoworkers")
-	BlogPostsCollection = db.Collection("bposts")
+	BlogPostsCollection = db.Collection("blogposts")
 	BookingsCollection = db.Collection("bookings")
 	BehindTheScenesCollection = db.Collection("bts")
 	CartCollection = db.Collection("cart")
@@ -138,7 +140,7 @@ func init() {
 	MessagesCollection = db.Collection("messages")
 	OrderCollection = db.Collection("orders")
 	PlacesCollection = db.Collection("places")
-	PostsCollection = db.Collection("posts")
+	PostsCollection = db.Collection("feedposts")
 	ProductCollection = db.Collection("products")
 	PurchasedTicketsCollection = db.Collection("purticks")
 	RecipeCollection = db.Collection("recipes")
@@ -153,6 +155,7 @@ func init() {
 	TicketsCollection = db.Collection("ticks")
 	UserDataCollection = db.Collection("userdata")
 	UserCollection = db.Collection("users")
+	SearchCollection = dbx.Collection("users")
 }
 
 // logPoolStats logs basic goroutine and pool stats every 60s (optional)

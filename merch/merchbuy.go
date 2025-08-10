@@ -7,9 +7,9 @@ import (
 	"log"
 	"naevis/db"
 	"naevis/globals"
+	"naevis/models"
 	"naevis/mq"
 	"naevis/stripe"
-	"naevis/structs"
 	"naevis/tickets"
 	"naevis/userdata"
 	"net/http"
@@ -156,7 +156,7 @@ func buyxMerch(w http.ResponseWriter, request MerchPurchaseRequest, requestingUs
 
 	// Find the merch in the database
 	// collection := client.Database("eventdb").Collection("merch")
-	var merch structs.Merch // Define the Merch struct based on your schema
+	var merch models.Merch // Define the Merch struct based on your schema
 	err := db.MerchCollection.FindOne(context.TODO(), bson.M{"entity_id": eventID, "merchid": merchID}).Decode(&merch)
 	if err != nil {
 		http.Error(w, "Merch not found or other error", http.StatusNotFound)
@@ -179,7 +179,7 @@ func buyxMerch(w http.ResponseWriter, request MerchPurchaseRequest, requestingUs
 
 	userdata.SetUserData("merch", merchID, requestingUserID, merch.EntityType, merch.EntityID)
 
-	m := mq.Index{}
+	m := models.Index{}
 	mq.Notify("merch-bought", m)
 
 	// Respond with a success message

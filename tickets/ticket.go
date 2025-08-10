@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"naevis/db"
 	"naevis/globals"
+	"naevis/models"
 	"naevis/mq"
-	"naevis/structs"
 	"naevis/userdata"
 	"naevis/utils"
 	"net/http"
@@ -21,6 +21,7 @@ import (
 )
 
 func CreateTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
 	eventID := ps.ByName("eventid")
 
 	// Parse form values
@@ -63,8 +64,8 @@ func CreateTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 	}
 	// seats := GenerateSeatLabels(seatStart, seatEnd, "A") // You can use "B", "C" if you want multiple rows
 
-	tick := structs.Ticket{
-		TicketID:   utils.GenerateID(12),
+	tick := models.Ticket{
+		TicketID:   utils.GenerateRandomString(12),
 		EventID:    eventID,
 		EntityID:   eventID,
 		EntityType: "event",
@@ -89,8 +90,8 @@ func CreateTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 		return
 	}
 
-	m := mq.Index{EntityType: "ticket", EntityId: tick.TicketID, Method: "POST", ItemType: "event", ItemId: eventID}
-	go mq.Emit("ticket-created", m)
+	m := models.Index{EntityType: "ticket", EntityId: tick.TicketID, Method: "POST", ItemType: "event", ItemId: eventID}
+	go mq.Emit(ctx, "ticket-created", m)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -114,7 +115,7 @@ func GetTickets(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 	// Retrieve tickets from MongoDB if not cached
 	// collection := client.Database("eventdb").Collection("ticks")
-	var tickList []structs.Ticket
+	var tickList []models.Ticket
 	filter := bson.M{"eventid": eventID}
 	cursor, err := db.TicketsCollection.Find(context.Background(), filter)
 	if err != nil {
@@ -123,7 +124,7 @@ func GetTickets(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	}
 	defer cursor.Close(context.Background())
 	for cursor.Next(context.Background()) {
-		var tick structs.Ticket
+		var tick models.Ticket
 		if err := cursor.Decode(&tick); err != nil {
 			http.Error(w, "Failed to decode ticket", http.StatusInternalServerError)
 			return
@@ -137,7 +138,7 @@ func GetTickets(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	}
 
 	if len(tickList) == 0 {
-		tickList = []structs.Ticket{}
+		tickList = []models.Ticket{}
 	}
 
 	// // Cache the tickets in Redis
@@ -165,7 +166,7 @@ func GetTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	// }
 
 	// collection := client.Database("eventdb").Collection("ticks")
-	var ticket structs.Ticket
+	var ticket models.Ticket
 	err := db.TicketsCollection.FindOne(context.TODO(), bson.M{"eventid": eventID, "ticketid": ticketID}).Decode(&ticket)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Ticket not found: %v", err), http.StatusNotFound)
@@ -182,16 +183,17 @@ func GetTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 }
 
 func EditTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
 	eventID := ps.ByName("eventid")
 	tickID := ps.ByName("ticketid")
 
-	var tick structs.Ticket
+	var tick models.Ticket
 	if err := json.NewDecoder(r.Body).Decode(&tick); err != nil {
 		http.Error(w, "Invalid input data", http.StatusBadRequest)
 		return
 	}
 
-	var existingTicket structs.Ticket
+	var existingTicket models.Ticket
 	err := db.TicketsCollection.FindOne(context.TODO(), bson.M{"eventid": eventID, "ticketid": tickID}).Decode(&existingTicket)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -252,8 +254,8 @@ func EditTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	m := mq.Index{EntityType: "ticket", EntityId: tickID, Method: "PUT", ItemType: "event", ItemId: eventID}
-	go mq.Emit("ticket-edited", m)
+	m := models.Index{EntityType: "ticket", EntityId: tickID, Method: "PUT", ItemType: "event", ItemId: eventID}
+	go mq.Emit(ctx, "ticket-edited", m)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -266,6 +268,7 @@ func EditTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 // Delete Ticket
 func DeleteTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
 	eventID := ps.ByName("eventid")
 	tickID := ps.ByName("ticketid")
 
@@ -286,8 +289,8 @@ func DeleteTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 	})
 	// RdxDel("event:" + eventID + ":tickets") // Invalidate cache after deletion
 
-	m := mq.Index{EntityType: "ticket", EntityId: tickID, Method: "DELETE", ItemType: "event", ItemId: eventID}
-	go mq.Emit("ticket-deleted", m)
+	m := models.Index{EntityType: "ticket", EntityId: tickID, Method: "DELETE", ItemType: "event", ItemId: eventID}
+	go mq.Emit(ctx, "ticket-deleted", m)
 }
 
 // Buy Ticket
@@ -318,7 +321,7 @@ func BuyTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 	// Find the ticket in the database
 	// collection := client.Database("eventdb").Collection("ticks")
-	var ticket structs.Ticket
+	var ticket models.Ticket
 	err = db.TicketsCollection.FindOne(context.TODO(), bson.M{"eventid": eventID, "ticketid": ticketID}).Decode(&ticket)
 	if err != nil {
 		http.Error(w, "Ticket not found or other error", http.StatusNotFound)
@@ -345,7 +348,7 @@ func BuyTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	m := mq.Index{}
+	m := models.Index{}
 	mq.Notify("ticket-bought", m)
 
 	userdata.SetUserData("ticket", ticketID, userID, m.EntityType, m.EntityId)
@@ -396,7 +399,7 @@ func VerifyTicket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 	}
 
 	// Query the database for the purchased ticket with the unique code
-	var purchasedTicket structs.PurchasedTicket
+	var purchasedTicket models.PurchasedTicket
 	err := db.PurchasedTicketsCollection.FindOne(context.TODO(), bson.M{
 		"eventid":    eventID,
 		"uniquecode": uniqueCode, // Match the unique code

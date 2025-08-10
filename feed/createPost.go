@@ -7,8 +7,8 @@ import (
 	"naevis/db"
 	"naevis/globals"
 	"naevis/middleware"
+	"naevis/models"
 	"naevis/mq"
-	"naevis/structs"
 	"naevis/userdata"
 	"naevis/utils"
 	"net/http"
@@ -19,6 +19,7 @@ import (
 )
 
 func CreateTweetPost(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	ctx := r.Context()
 	tokenString := r.Header.Get("Authorization")
 	claims, err := middleware.ValidateJWT(tokenString)
 	if err != nil {
@@ -51,11 +52,12 @@ func CreateTweetPost(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 		return
 	}
 
-	newPost := structs.Post{
-		PostID:    utils.GenerateID(12),
-		Username:  username,
-		UserID:    userID,
-		Text:      postText,
+	newPost := models.FeedPost{
+		PostID:   utils.GenerateRandomString(12),
+		Username: username,
+		UserID:   userID,
+		Text:     postText,
+		// Timestamp: time.Now().Format(time.RFC3339),
 		Timestamp: time.Now().Format(time.RFC3339),
 		Likes:     0,
 		Type:      postType,
@@ -96,7 +98,7 @@ func CreateTweetPost(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 	}
 
 	userdata.SetUserData("feedpost", newPost.PostID, userID, "", "")
-	go mq.Emit("post-created", mq.Index{
+	go mq.Emit(ctx, "post-created", models.Index{
 		EntityType: "feedpost",
 		EntityId:   newPost.PostID,
 		Method:     "POST",
@@ -112,6 +114,7 @@ func CreateTweetPost(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 
 // deletePost handles deleting a post by ID
 func DeletePost(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
 	postID := ps.ByName("postid")
 
 	if postID == "" {
@@ -134,7 +137,7 @@ func DeletePost(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	// }
 
 	// Delete the post from MongoDB
-	// db.PostsCollection := client.Database("eventdb").Collection("posts")
+	// db.FeedPostsCollection := client.Database("eventdb").Collection("posts")
 	result, err := db.PostsCollection.DeleteOne(context.TODO(), bson.M{"postid": postID})
 	if err != nil {
 		http.Error(w, "Failed to delete post", http.StatusInternalServerError)
@@ -154,8 +157,8 @@ func DeletePost(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 	userdata.DelUserData("feedpost", postID, requestingUserID)
 
-	m := mq.Index{EntityType: "feedpost", EntityId: postID, Method: "DELETE"}
-	go mq.Emit("post-deleted", m)
+	m := models.Index{EntityType: "feedpost", EntityId: postID, Method: "DELETE"}
+	go mq.Emit(ctx, "post-deleted", m)
 
 	// Respond with a success message
 	w.Header().Set("Content-Type", "application/json")

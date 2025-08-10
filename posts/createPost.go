@@ -1,7 +1,6 @@
 package posts
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -9,23 +8,26 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 
 	"naevis/db"
 	"naevis/filemgr"
 	"naevis/globals"
 	"naevis/models"
+	"naevis/mq"
+	"naevis/utils"
 )
 
 func GetPost(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	objID, err := primitive.ObjectIDFromHex(ps.ByName("id"))
-	if err != nil {
-		http.Error(w, "Invalid post ID", http.StatusBadRequest)
-		return
-	}
+	// objID, err := primitive.ObjectIDFromHex(ps.ByName("id"))
+	// if err != nil {
+	// 	http.Error(w, "Invalid post ID", http.StatusBadRequest)
+	// 	return
+	// }
+	ctx := r.Context()
+	postid := ps.ByName("id")
 
-	var post models.Post
-	if err := db.BlogPostsCollection.FindOne(context.TODO(), bson.M{"_id": objID}).Decode(&post); err != nil {
+	var post models.BlogPost
+	if err := db.BlogPostsCollection.FindOne(ctx, bson.M{"postid": postid}).Decode(&post); err != nil {
 		http.Error(w, "Post not found", http.StatusNotFound)
 		return
 	}
@@ -34,16 +36,17 @@ func GetPost(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 }
 
 func GetAllPosts(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	cur, err := db.BlogPostsCollection.Find(context.TODO(), bson.M{})
+	ctx := r.Context()
+	cur, err := db.BlogPostsCollection.Find(ctx, bson.M{})
 	if err != nil {
 		http.Error(w, "Failed to fetch posts", http.StatusInternalServerError)
 		return
 	}
-	defer cur.Close(context.TODO())
+	defer cur.Close(ctx)
 
-	var posts []models.Post
-	for cur.Next(context.TODO()) {
-		var post models.Post
+	var posts []models.BlogPost
+	for cur.Next(ctx) {
+		var post models.BlogPost
 		if err := cur.Decode(&post); err == nil {
 			post.Content = ""
 			posts = append(posts, post)
@@ -51,18 +54,19 @@ func GetAllPosts(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	}
 
 	if len(posts) == 0 {
-		posts = []models.Post{}
+		posts = []models.BlogPost{}
 	}
 
 	json.NewEncoder(w).Encode(posts)
 }
 func CreatePost(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	ctx := r.Context()
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		http.Error(w, "Invalid form data", http.StatusBadRequest)
 		return
 	}
 
-	requestingUserID, ok := r.Context().Value(globals.UserIDKey).(string)
+	requestingUserID, ok := ctx.Value(globals.UserIDKey).(string)
 	if !ok {
 		http.Error(w, "Invalid user", http.StatusBadRequest)
 		return
@@ -108,8 +112,8 @@ func CreatePost(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		}
 	}
 
-	post := models.Post{
-		ID:          primitive.NewObjectID(),
+	post := models.BlogPost{
+		PostID:      utils.GenerateRandomString(15),
 		Title:       title,
 		Content:     content,
 		Category:    category,
@@ -121,25 +125,29 @@ func CreatePost(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		UpdatedAt:   time.Now(),
 	}
 
-	res, err := db.BlogPostsCollection.InsertOne(context.TODO(), post)
+	_, err := db.BlogPostsCollection.InsertOne(ctx, post)
 	if err != nil {
 		http.Error(w, "Failed to create post", http.StatusInternalServerError)
 		return
 	}
 
+	m := models.Index{EntityType: "blogpost", EntityId: post.PostID, Method: "POST"}
+	go mq.Emit(ctx, "post-created", m)
+
 	json.NewEncoder(w).Encode(map[string]any{
 		"success": true,
-		"postid":  res.InsertedID.(primitive.ObjectID).Hex(),
+		"postid":  post.PostID,
 	})
 }
 
 func UpdatePost(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
 	idStr := ps.ByName("id")
-	objID, err := primitive.ObjectIDFromHex(idStr)
-	if err != nil {
-		http.Error(w, "Invalid post ID", http.StatusBadRequest)
-		return
-	}
+	// objID, err := primitive.ObjectIDFromHex(idStr)
+	// if err != nil {
+	// 	http.Error(w, "Invalid post ID", http.StatusBadRequest)
+	// 	return
+	// }
 
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		http.Error(w, "Invalid form data", http.StatusBadRequest)
@@ -190,15 +198,18 @@ func UpdatePost(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 	update["updatedAt"] = time.Now()
 
-	_, err = db.BlogPostsCollection.UpdateOne(
-		context.TODO(),
-		bson.M{"_id": objID},
+	_, err := db.BlogPostsCollection.UpdateOne(
+		ctx,
+		bson.M{"postid": idStr},
 		bson.M{"$set": update},
 	)
 	if err != nil {
 		http.Error(w, "Failed to update post", http.StatusInternalServerError)
 		return
 	}
+
+	m := models.Index{EntityType: "blogpost", EntityId: idStr, Method: "PUT"}
+	go mq.Emit(ctx, "post-updated", m)
 
 	json.NewEncoder(w).Encode(map[string]any{
 		"success": true,
@@ -262,7 +273,7 @@ func UpdatePost(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 // 		UpdatedAt:   time.Now(),
 // 	}
 
-// 	res, err := db.BlogPostsCollection.InsertOne(context.TODO(), post)
+// 	res, err := db.BlogPostsCollection.InsertOne(ctx, post)
 // 	if err != nil {
 // 		http.Error(w, "Failed to create post", http.StatusInternalServerError)
 // 		return
@@ -323,7 +334,7 @@ func UpdatePost(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 // 	update["updatedAt"] = time.Now()
 
 // 	_, err = db.BlogPostsCollection.UpdateOne(
-// 		context.TODO(),
+// 		ctx,
 // 		bson.M{"_id": objID},
 // 		bson.M{"$set": update},
 // 	)
@@ -385,7 +396,7 @@ func UpdatePost(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 // 		UpdatedAt:   time.Now(),
 // 	}
 
-// 	res, err := db.BlogPostsCollection.InsertOne(context.TODO(), post)
+// 	res, err := db.BlogPostsCollection.InsertOne(ctx, post)
 // 	if err != nil {
 // 		http.Error(w, "Failed to create post", http.StatusInternalServerError)
 // 		return
@@ -436,7 +447,7 @@ func UpdatePost(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 // 	update["updatedAt"] = time.Now()
 
 // 	_, err = db.BlogPostsCollection.UpdateOne(
-// 		context.TODO(),
+// 		ctx,
 // 		bson.M{"_id": objID},
 // 		bson.M{"$set": update},
 // 	)

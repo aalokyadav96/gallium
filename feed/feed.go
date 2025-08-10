@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"naevis/db"
+	"naevis/models"
 	"naevis/rdx"
-	"naevis/structs"
 	"net/http"
 	"time"
 
@@ -18,7 +18,7 @@ import (
 )
 
 func GetPosts(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	var posts []structs.Post
+	var posts []models.FeedPost
 
 	filter := bson.M{}
 	sortOrder := bson.D{{Key: "timestamp", Value: -1}}
@@ -37,7 +37,7 @@ func GetPosts(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 
 	userIDsSet := make(map[string]struct{})
 	for cursor.Next(ctx) {
-		var post structs.Post
+		var post models.FeedPost
 		if err := cursor.Decode(&post); err != nil {
 			http.Error(w, "Failed to decode post", http.StatusInternalServerError)
 			return
@@ -52,7 +52,7 @@ func GetPosts(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	}
 
 	if len(posts) == 0 {
-		posts = []structs.Post{}
+		posts = []models.FeedPost{}
 	}
 
 	var userIDs []string
@@ -116,7 +116,7 @@ func GetPost(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	}
 	defer cursor.Close(context.TODO())
 
-	var post structs.Post
+	var post models.FeedPost
 	if cursor.Next(context.TODO()) {
 		if err := cursor.Decode(&post); err != nil {
 			http.Error(w, "Failed to decode post data", http.StatusInternalServerError)

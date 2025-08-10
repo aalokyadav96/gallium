@@ -13,9 +13,9 @@ import (
 
 	"naevis/db"
 	"naevis/middleware"
+	"naevis/models"
 	"naevis/mq"
 	"naevis/rdx"
-	"naevis/structs"
 	"naevis/utils"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -26,7 +26,7 @@ import (
 
 const (
 	refreshTokenTTL = 7 * 24 * time.Hour // 7 days
-	accessTokenTTL  = 15 * time.Minute   // 15 minutes
+	// accessTokenTTL  = 15 * time.Minute   // 15 minutes
 )
 
 var (
@@ -35,13 +35,13 @@ var (
 )
 
 func loginHandler(w http.ResponseWriter, r *http.Request) {
-	var user structs.User
+	var user models.User
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 		http.Error(w, "Invalid input", http.StatusBadRequest)
 		return
 	}
 
-	var storedUser structs.User
+	var storedUser models.User
 	err := db.UserCollection.FindOne(context.TODO(), bson.M{"username": user.Username}).Decode(&storedUser)
 	if err != nil {
 		http.Error(w, "Invalid username or password", http.StatusUnauthorized)
@@ -64,7 +64,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	claims := &middleware.Claims{
 		Username: storedUser.Username,
 		UserID:   storedUser.UserID,
-		Role:     storedUser.Role, // assumes Role []string exists in your structs.User
+		Role:     storedUser.Role, // assumes Role []string exists in your models.User
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(12 * time.Hour)),
 		},
@@ -108,7 +108,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func registerHandler(w http.ResponseWriter, r *http.Request) {
-	var user structs.User
+	var user models.User
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 		http.Error(w, "Invalid input", http.StatusBadRequest)
 		return
@@ -117,7 +117,7 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Registering user: %s", user.Username)
 
 	// Check if user already exists
-	var existingUser structs.User
+	var existingUser models.User
 	err := db.UserCollection.FindOne(context.TODO(), bson.M{"username": user.Username}).Decode(&existingUser)
 	if err == nil {
 		http.Error(w, "User already exists", http.StatusConflict)
@@ -135,7 +135,7 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user.Password = string(hashedPassword)
-	user.UserID = "u" + utils.GenerateName(10)
+	user.UserID = "u" + utils.GenerateRandomString(10)
 	// user.EmailVerified = false
 	user.EmailVerified = true
 	user.Role = []string{"user"}
@@ -177,6 +177,7 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func logoutUserHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	tokenString := r.Header.Get("Authorization")
 	if tokenString == "" {
 		http.Error(w, "Missing token", http.StatusUnauthorized)
@@ -208,8 +209,8 @@ func logoutUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	m := mq.Index{}
-	mq.Emit("user-loggedout", m)
+	m := models.Index{}
+	mq.Emit(ctx, "user-loggedout", m)
 
 	utils.SendResponse(w, http.StatusOK, nil, "User logged out successfully", nil)
 }

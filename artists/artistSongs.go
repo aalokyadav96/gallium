@@ -8,16 +8,18 @@ import (
 
 	"naevis/db"
 	"naevis/filemgr"
+	"naevis/models"
+	"naevis/mq"
 	"naevis/utils"
 	_ "net/http/pprof"
 
 	"github.com/julienschmidt/httprouter"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 func PostNewSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
 	artistID := ps.ByName("id")
 
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
@@ -39,8 +41,8 @@ func PostNewSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 	formFields, _ := collectSongFieldsFromForm(r)
 
-	newSong := Song{
-		SongID:      utils.GenerateIntID(12),
+	newSong := models.ArtistSong{
+		SongID:      utils.GenerateRandomString(12),
 		ArtistID:    artistID,
 		Title:       formFields["title"],
 		Genre:       formFields["genre"],
@@ -50,7 +52,7 @@ func PostNewSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		Poster:      posterFile,
 		Published:   true,
 		Plays:       0,
-		UploadedAt:  primitive.NewDateTimeFromTime(time.Now()),
+		UploadedAt:  time.Now(),
 	}
 
 	filter := bson.M{"artistid": artistID}
@@ -65,10 +67,15 @@ func PostNewSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
+	// ✅ Emit event for messaging queue (if needed)
+	go mq.Emit(ctx, "song-created", models.Index{
+		EntityType: "song", EntityId: newSong.SongID, Method: "POST",
+	})
 	utils.RespondWithJSON(w, http.StatusCreated, newSong)
 }
 
 func EditSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
 	artistID := ps.ByName("id")
 	songID := ps.ByName("songId")
 
@@ -122,6 +129,10 @@ func EditSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
+	// ✅ Emit event for messaging queue (if needed)
+	go mq.Emit(ctx, "song-updated", models.Index{
+		EntityType: "song", EntityId: songID, Method: "PUT",
+	})
 	utils.RespondWithJSON(w, http.StatusOK, bson.M{"message": "Song updated successfully"})
 }
 
@@ -246,6 +257,7 @@ func collectSongFieldsFromForm(r *http.Request) (map[string]string, error) {
 
 // DeleteSong removes a song by its songid.
 func DeleteSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
 	artistID := ps.ByName("id")
 	// songID := r.URL.Query().Get("songId")
 	songID := ps.ByName("songId")
@@ -264,6 +276,10 @@ func DeleteSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
+	// ✅ Emit event for messaging queue (if needed)
+	go mq.Emit(ctx, "song-deleted", models.Index{
+		EntityType: "song", EntityId: songID, Method: "DELETE",
+	})
 	utils.RespondWithJSON(w, http.StatusOK, bson.M{"message": "Song deleted successfully"})
 }
 
@@ -273,7 +289,7 @@ func GetArtistsSongs(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 	artistID := ps.ByName("id")
 
 	var result struct {
-		Songs []Song `bson:"songs"`
+		Songs []models.ArtistSong `bson:"songs"`
 	}
 	fmt.Println("---------------------", artistID)
 	// ignore errors; result.Songs will be nil if no document found
@@ -283,7 +299,7 @@ func GetArtistsSongs(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 		fmt.Println(err)
 	}
 
-	filtered := make([]Song, 0, len(result.Songs))
+	filtered := make([]models.ArtistSong, 0, len(result.Songs))
 	for _, s := range result.Songs {
 		if s.Published {
 			filtered = append(filtered, s)
