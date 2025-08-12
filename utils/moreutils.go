@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -258,6 +259,7 @@ func GetUserIDFromRequest(r *http.Request) string {
 	if !ok || userID == "" {
 		return ""
 	}
+	log.Println("-----|-------", userID, "---------|-------")
 	return userID
 }
 

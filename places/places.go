@@ -14,6 +14,7 @@ import (
 	"naevis/userdata"
 	"naevis/utils"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -30,12 +31,12 @@ func GetPlaces(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	// Try cache
-	if cached, _ := rdx.RdxGet("places"); cached != "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(cached))
-		return
-	}
+	// // Try cache
+	// if cached, _ := rdx.RdxGet("places"); cached != "" {
+	// 	w.Header().Set("Content-Type", "application/json")
+	// 	w.Write([]byte(cached))
+	// 	return
+	// }
 
 	places, err := utils.FindAndDecode[models.Place](ctx, db.PlacesCollection, bson.M{})
 	if err != nil {
@@ -44,7 +45,7 @@ func GetPlaces(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	}
 
 	data := utils.ToJSON(places) // or json.Marshal
-	rdx.RdxSet("places", string(data))
+	// rdx.RdxSet("places", string(data))
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(data)
 }
@@ -220,65 +221,13 @@ func GetPlaceQ(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 // 	return fileName, nil
 // }
 
-// // Parses and validates form data for places
-func parsePlaceFormData(_ http.ResponseWriter, r *http.Request) (models.Place, error) {
-	err := r.ParseMultipartForm(10 << 20) // 10MB limit
-	if err != nil {
-		return models.Place{}, fmt.Errorf("unable to parse form")
-	}
-
-	name := strings.TrimSpace(r.FormValue("name"))
-	address := strings.TrimSpace(r.FormValue("address"))
-	description := strings.TrimSpace(r.FormValue("description"))
-	category := strings.TrimSpace(r.FormValue("category"))
-	capacityStr := strings.TrimSpace(r.FormValue("capacity"))
-
-	if name == "" || address == "" || description == "" || category == "" || capacityStr == "" {
-		return models.Place{}, fmt.Errorf("all required fields must be filled")
-	}
-
-	capacity, err := strconv.Atoi(capacityStr)
-	if err != nil || capacity <= 0 {
-		return models.Place{}, fmt.Errorf("capacity must be a positive integer")
-	}
-
-	// Optional fields
-	city := strings.TrimSpace(r.FormValue("city"))
-	country := strings.TrimSpace(r.FormValue("country"))
-	zipcode := strings.TrimSpace(r.FormValue("zipCode"))
-	phone := strings.TrimSpace(r.FormValue("phone"))
-
-	// Optional banner upload via filemgr
-	var bannerFilename string
-	if r.MultipartForm != nil {
-		bannerFilename, _ = filemgr.SaveFormFile(r.MultipartForm, "banner", filemgr.EntityPlace, filemgr.PicBanner, false)
-	}
-
-	return models.Place{
-		PlaceID:     utils.GenerateRandomString(14),
-		Name:        name,
-		Address:     address,
-		Description: description,
-		Category:    category,
-		Capacity:    capacity,
-		Banner:      bannerFilename,
-		Phone:       phone,
-		City:        city,
-		Country:     country,
-		ZipCode:     zipcode,
-		CreatedAt:   time.Now(),
-		ReviewCount: 0,
-		Status:      "active",
-	}, nil
-}
-
+// // // Parses and validates form data for places
 // func parsePlaceFormData(_ http.ResponseWriter, r *http.Request) (models.Place, error) {
 // 	err := r.ParseMultipartForm(10 << 20) // 10MB limit
 // 	if err != nil {
 // 		return models.Place{}, fmt.Errorf("unable to parse form")
 // 	}
 
-// 	// Required fields
 // 	name := strings.TrimSpace(r.FormValue("name"))
 // 	address := strings.TrimSpace(r.FormValue("address"))
 // 	description := strings.TrimSpace(r.FormValue("description"))
@@ -300,18 +249,14 @@ func parsePlaceFormData(_ http.ResponseWriter, r *http.Request) (models.Place, e
 // 	zipcode := strings.TrimSpace(r.FormValue("zipCode"))
 // 	phone := strings.TrimSpace(r.FormValue("phone"))
 
-// 	// Banner handling (optional)
+// 	// Optional banner upload via filemgr
 // 	var bannerFilename string
-// 	file, handler, err := r.FormFile("banner")
-// 	if err == nil && file != nil {
-// 		defer file.Close()
-// 		// Save or process the file here, for now we just read filename
-// 		bannerFilename = handler.Filename
-// 		// Actual storage logic goes here...
+// 	if r.MultipartForm != nil {
+// 		bannerFilename, _ = filemgr.SaveFormFile(r.MultipartForm, "banner", filemgr.EntityPlace, filemgr.PicBanner, false)
 // 	}
 
 // 	return models.Place{
-// 		PlaceID:     utils.GenerateID(14),
+// 		PlaceID:     utils.GenerateRandomString(14),
 // 		Name:        name,
 // 		Address:     address,
 // 		Description: description,
@@ -328,16 +273,114 @@ func parsePlaceFormData(_ http.ResponseWriter, r *http.Request) (models.Place, e
 // 	}, nil
 // }
 
-// Creates a new place
+// parseAndBuildPlace parses form data and returns a Place object and updateFields map.
+// mode: "create" or "update"
+func parseAndBuildPlace(r *http.Request, mode string) (models.Place, bson.M, error) {
+	err := r.ParseMultipartForm(10 << 20) // 10MB
+	if err != nil {
+		return models.Place{}, nil, fmt.Errorf("unable to parse form")
+	}
+
+	place := models.Place{}
+	updateFields := bson.M{}
+
+	// Helper to set both struct and update map
+	setField := func(fieldName string, value interface{}) {
+		updateFields[fieldName] = value
+		reflect.ValueOf(&place).Elem().FieldByNameFunc(func(s string) bool {
+			return strings.EqualFold(s, fieldName)
+		}).Set(reflect.ValueOf(value))
+	}
+
+	// Required in create, optional in update
+	name := strings.TrimSpace(r.FormValue("name"))
+	if mode == "create" && name == "" {
+		return models.Place{}, nil, fmt.Errorf("name is required")
+	}
+	if name != "" {
+		setField("Name", name)
+	}
+
+	address := strings.TrimSpace(r.FormValue("address"))
+	if mode == "create" && address == "" {
+		return models.Place{}, nil, fmt.Errorf("address is required")
+	}
+	if address != "" {
+		setField("Address", address)
+	}
+
+	description := strings.TrimSpace(r.FormValue("description"))
+	if mode == "create" && description == "" {
+		return models.Place{}, nil, fmt.Errorf("description is required")
+	}
+	if description != "" {
+		setField("Description", description)
+	}
+
+	category := strings.TrimSpace(r.FormValue("category"))
+	if mode == "create" && category == "" {
+		return models.Place{}, nil, fmt.Errorf("category is required")
+	}
+	if category != "" {
+		setField("Category", category)
+	}
+
+	capacityStr := strings.TrimSpace(r.FormValue("capacity"))
+	if mode == "create" && capacityStr == "" {
+		return models.Place{}, nil, fmt.Errorf("capacity is required")
+	}
+	if capacityStr != "" {
+		capacity, err := strconv.Atoi(capacityStr)
+		if err != nil || capacity <= 0 {
+			return models.Place{}, nil, fmt.Errorf("capacity must be a positive integer")
+		}
+		setField("Capacity", capacity)
+	}
+
+	// Optional fields
+	if city := strings.TrimSpace(r.FormValue("city")); city != "" {
+		setField("City", city)
+	}
+	if country := strings.TrimSpace(r.FormValue("country")); country != "" {
+		setField("Country", country)
+	}
+	if zipcode := strings.TrimSpace(r.FormValue("zipCode")); zipcode != "" {
+		setField("ZipCode", zipcode)
+	}
+	if phone := strings.TrimSpace(r.FormValue("phone")); phone != "" {
+		setField("Phone", phone)
+	}
+
+	// Banner upload
+	if r.MultipartForm != nil {
+		banner, _ := filemgr.SaveFormFile(r.MultipartForm, "banner", filemgr.EntityPlace, filemgr.PicBanner, false)
+		if banner != "" {
+			setField("Banner", banner)
+		}
+	}
+
+	// Common timestamps
+	if mode == "create" {
+		setField("PlaceID", utils.GenerateRandomString(14))
+		setField("CreatedAt", time.Now())
+		setField("ReviewCount", 0)
+		setField("Status", "active")
+	} else {
+		setField("UpdatedAt", time.Now())
+	}
+
+	return place, updateFields, nil
+}
+
+// CreatePlace endpoint
 func CreatePlace(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	ctx := r.Context()
-	place, err := parsePlaceFormData(w, r)
+	place, _, err := parseAndBuildPlace(r, "create")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	// Retrieve user ID
 	requestingUserID, ok := r.Context().Value(globals.UserIDKey).(string)
 	if !ok {
 		http.Error(w, "Invalid user", http.StatusBadRequest)
@@ -345,7 +388,6 @@ func CreatePlace(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	}
 	place.CreatedBy = requestingUserID
 
-	// Insert into MongoDB
 	_, err = db.PlacesCollection.InsertOne(context.TODO(), place)
 	if err != nil {
 		http.Error(w, "Error creating place", http.StatusInternalServerError)
@@ -353,7 +395,6 @@ func CreatePlace(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	}
 
 	autocom.AddPlaceToAutocorrect(rdx.Conn, place.PlaceID, place.Name)
-
 	userdata.SetUserData("place", place.PlaceID, requestingUserID, "", "")
 	go mq.Emit(ctx, "place-created", models.Index{EntityType: "place", EntityId: place.PlaceID, Method: "POST"})
 

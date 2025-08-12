@@ -22,6 +22,7 @@ type Artist struct {
 	EventIDs  []string          `bson:"events" json:"events"`
 	Members   []BandMember      `bson:"members,omitempty" json:"members,omitempty"` // ✅ ADD THIS
 	CreatedAt time.Time         `json:"createdAt" bson:"createdAt"`
+	CreatorID string            `bson:"creatorid" json:"creatorid"`
 }
 
 type BandMember struct {

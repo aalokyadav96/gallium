@@ -3,11 +3,8 @@ package places
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
-	"naevis/autocom"
 	"naevis/db"
-	"naevis/filemgr"
 	"naevis/globals"
 	"naevis/models"
 	"naevis/mq"
@@ -15,8 +12,6 @@ import (
 	"naevis/userdata"
 	"naevis/utils"
 	"net/http"
-	"strings"
-	"time"
 
 	"github.com/julienschmidt/httprouter"
 	"go.mongodb.org/mongo-driver/bson"
@@ -40,20 +35,21 @@ func updatePlaceInDB(w http.ResponseWriter, placeID string, updateFields bson.M)
 
 	return nil
 }
+
+// EditPlace endpoint
 func EditPlace(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	ctx := r.Context()
 	placeID := ps.ByName("placeid")
 
-	// Validate user
 	requestingUserID, ok := r.Context().Value(globals.UserIDKey).(string)
 	if !ok {
 		http.Error(w, "Invalid user", http.StatusUnauthorized)
 		return
 	}
 
-	// Fetch existing place
-	var place models.Place
-	err := db.PlacesCollection.FindOne(context.TODO(), bson.M{"placeid": placeID}).Decode(&place)
+	// Authorization check
+	var existing models.Place
+	err := db.PlacesCollection.FindOne(context.TODO(), bson.M{"placeid": placeID}).Decode(&existing)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			http.Error(w, "Place not found", http.StatusNotFound)
@@ -62,50 +58,21 @@ func EditPlace(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		}
 		return
 	}
-
-	// Authorization
-	if place.CreatedBy != requestingUserID {
+	if existing.CreatedBy != requestingUserID {
 		http.Error(w, "You are not authorized to edit this place", http.StatusForbidden)
 		return
 	}
 
-	// Parse form data
-	if err := r.ParseMultipartForm(10 << 20); err != nil {
-		http.Error(w, "Unable to parse form", http.StatusBadRequest)
+	_, updateFields, err := parseAndBuildPlace(r, "update")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	// Collect update fields
-	updateFields := bson.M{}
-
-	if name := strings.TrimSpace(r.FormValue("name")); name != "" {
-		updateFields["name"] = name
-		autocom.AddPlaceToAutocorrect(rdx.Conn, placeID, name)
+	if len(updateFields) == 0 {
+		http.Error(w, "No fields to update", http.StatusBadRequest)
+		return
 	}
-	if address := strings.TrimSpace(r.FormValue("address")); address != "" {
-		updateFields["address"] = address
-	}
-	if description := strings.TrimSpace(r.FormValue("description")); description != "" {
-		updateFields["description"] = description
-	}
-	if category := strings.TrimSpace(r.FormValue("category")); category != "" {
-		updateFields["category"] = category
-	}
-
-	// Banner upload (optional)
-	var banner string
-	if r.MultipartForm != nil {
-		banner, err = filemgr.SaveFormFile(r.MultipartForm, "banner", filemgr.EntityPlace, filemgr.PicBanner, false)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("banner upload failed: %v", err), http.StatusBadRequest)
-			return
-		}
-		if banner != "" {
-			updateFields["banner"] = banner
-		}
-	}
-
-	updateFields["updated_at"] = time.Now()
 
 	if err := updatePlaceInDB(w, placeID, updateFields); err != nil {
 		return
@@ -116,18 +83,18 @@ func EditPlace(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	utils.RespondWithJSON(w, http.StatusOK, updateFields)
 }
 
-// // Edits an existing place
 // func EditPlace(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+// 	ctx := r.Context()
 // 	placeID := ps.ByName("placeid")
 
-// 	// Retrieve user ID
+// 	// Validate user
 // 	requestingUserID, ok := r.Context().Value(globals.UserIDKey).(string)
 // 	if !ok {
 // 		http.Error(w, "Invalid user", http.StatusUnauthorized)
 // 		return
 // 	}
 
-// 	// Fetch the existing place
+// 	// Fetch existing place
 // 	var place models.Place
 // 	err := db.PlacesCollection.FindOne(context.TODO(), bson.M{"placeid": placeID}).Decode(&place)
 // 	if err != nil {
@@ -139,13 +106,13 @@ func EditPlace(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 // 		return
 // 	}
 
-// 	// Ensure authorization
+// 	// Authorization
 // 	if place.CreatedBy != requestingUserID {
 // 		http.Error(w, "You are not authorized to edit this place", http.StatusForbidden)
 // 		return
 // 	}
 
-// 	// Parse form
+// 	// Parse form data
 // 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 // 		http.Error(w, "Unable to parse form", http.StatusBadRequest)
 // 		return
@@ -153,37 +120,39 @@ func EditPlace(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 // 	// Collect update fields
 // 	updateFields := bson.M{}
-// 	if name := r.FormValue("name"); name != "" {
+
+// 	if name := strings.TrimSpace(r.FormValue("name")); name != "" {
 // 		updateFields["name"] = name
 // 		autocom.AddPlaceToAutocorrect(rdx.Conn, placeID, name)
 // 	}
-// 	if address := r.FormValue("address"); address != "" {
+// 	if address := strings.TrimSpace(r.FormValue("address")); address != "" {
 // 		updateFields["address"] = address
 // 	}
-// 	if description := r.FormValue("description"); description != "" {
+// 	if description := strings.TrimSpace(r.FormValue("description")); description != "" {
 // 		updateFields["description"] = description
 // 	}
-// 	if category := r.FormValue("category"); category != "" {
+// 	if category := strings.TrimSpace(r.FormValue("category")); category != "" {
 // 		updateFields["category"] = category
 // 	}
 
-// 	// Handle banner upload
-// 	banner, err := handleBannerUpload(w, r, placeID)
-// 	if err != nil {
-// 		http.Error(w, err.Error(), http.StatusBadRequest)
-// 		return
-// 	}
-// 	if banner != "" {
-// 		updateFields["banner"] = banner
+// 	// Banner upload (optional)
+// 	var banner string
+// 	if r.MultipartForm != nil {
+// 		banner, err = filemgr.SaveFormFile(r.MultipartForm, "banner", filemgr.EntityPlace, filemgr.PicBanner, false)
+// 		if err != nil {
+// 			http.Error(w, fmt.Sprintf("banner upload failed: %v", err), http.StatusBadRequest)
+// 			return
+// 		}
+// 		if banner != "" {
+// 			updateFields["banner"] = banner
+// 		}
 // 	}
 
-// 	// Update database
 // 	updateFields["updated_at"] = time.Now()
+
 // 	if err := updatePlaceInDB(w, placeID, updateFields); err != nil {
 // 		return
 // 	}
-
-// 	utils.CreateThumb(placeID, bannerDir, ".jpg", 300, 200)
 
 // 	go mq.Emit(ctx, "place-edited", models.Index{EntityType: "place", EntityId: placeID, Method: "PUT"})
 

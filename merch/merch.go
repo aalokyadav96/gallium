@@ -345,13 +345,13 @@ func GetMerchs(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 	eventID := ps.ByName("eventid")
 	entityType := ps.ByName("entityType")
-	cacheKey := fmt.Sprintf("merchlist:%s", eventID)
+	// cacheKey := fmt.Sprintf("merchlist:%s", eventID)
 
-	if cached, _ := rdx.RdxGet(cacheKey); cached != "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(cached))
-		return
-	}
+	// if cached, _ := rdx.RdxGet(cacheKey); cached != "" {
+	// 	w.Header().Set("Content-Type", "application/json")
+	// 	w.Write([]byte(cached))
+	// 	return
+	// }
 
 	filter := bson.M{"entity_type": entityType, "entity_id": eventID}
 	merchList, err := utils.FindAndDecode[models.Merch](ctx, db.MerchCollection, filter)
@@ -360,10 +360,15 @@ func GetMerchs(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	data := utils.ToJSON(merchList)
-	rdx.RdxSet(cacheKey, string(data))
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
+	// Ensure we return [] instead of null
+	if merchList == nil {
+		merchList = []models.Merch{}
+	}
+
+	// data := utils.ToJSON(merchList)
+	// rdx.RdxSet(cacheKey, string(data))
+
+	utils.RespondWithJSON(w, http.StatusOK, merchList)
 }
 
 // // Fetch a list of merchandise items

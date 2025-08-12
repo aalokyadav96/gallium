@@ -26,50 +26,28 @@ func GetAllArtists(w http.ResponseWriter, r *http.Request, _ httprouter.Params) 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	artists, err := utils.FindAndDecode[models.Artist](ctx, db.ArtistsCollection, bson.M{})
+	var artists []models.Artist
+	cursor, err := db.ArtistsCollection.Find(ctx, bson.M{})
 	if err != nil {
-		utils.Error(w, http.StatusInternalServerError, "Error fetching artists")
+		utils.RespondWithError(w, http.StatusInternalServerError, "Error fetching artists")
+		return
+	}
+	defer cursor.Close(ctx)
+
+	if err := cursor.All(ctx, &artists); err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Error decoding artists")
 		return
 	}
 
-	utils.JSON(w, http.StatusOK, artists)
+	utils.RespondWithJSON(w, http.StatusOK, artists)
 }
 
-// func GetAllArtists(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-// 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-// 	defer cancel()
-
-// 	cursor, err := db.ArtistsCollection.Find(ctx, bson.M{})
-// 	if err != nil {
-// 		utils.RespondWithError(w, http.StatusInternalServerError, "Error fetching artists")
-// 		return
-// 	}
-// 	defer cursor.Close(ctx)
-
-// 	var artists []models.Artist
-// 	if err := cursor.All(ctx, &artists); err != nil {
-// 		utils.RespondWithError(w, http.StatusInternalServerError, "Error parsing artist data")
-// 		return
-// 	}
-
-// 	if len(artists) == 0 {
-// 		artists = []models.Artist{}
-// 	}
-
-// 	utils.RespondWithJSON(w, http.StatusOK, artists)
-// }
-
 func GetArtistByID(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
 	artistId := ps.ByName("id")
-	// objID, err := primitive.ObjectIDFromHex(idParam)
-	// if err != nil {
-	// 	utils.RespondWithError(w, http.StatusBadRequest, "Invalid artist ID")
-	// 	return
-	// }
-
 	var artist models.Artist
-	err := db.ArtistsCollection.FindOne(r.Context(), bson.M{"artistid": artistId}).Decode(&artist)
-	if err != nil {
+
+	if err := db.ArtistsCollection.FindOne(ctx, bson.M{"artistid": artistId}).Decode(&artist); err != nil {
 		utils.RespondWithError(w, http.StatusNotFound, "Artist not found")
 		return
 	}
@@ -78,52 +56,75 @@ func GetArtistByID(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 }
 
 func GetArtistsByEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	eventIDParam := ps.ByName("eventid")
-	// eventObjID, err := primitive.ObjectIDFromHex(eventIDParam)
-	// if err != nil {
-	// 	utils.RespondWithError(w, http.StatusBadRequest, "Invalid event ID")
-	// 	return
-	// }
+	ctx := r.Context()
+	eventID := ps.ByName("eventid")
 
-	filter := bson.M{"events": eventIDParam}
-	cursor, err := db.ArtistsCollection.Find(r.Context(), filter)
+	cursor, err := db.ArtistsCollection.Find(ctx, bson.M{"events": eventID})
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, "Error fetching artists")
 		return
 	}
-	defer cursor.Close(r.Context())
+	defer cursor.Close(ctx)
 
 	var artists []models.Artist
-	if err := cursor.All(r.Context(), &artists); err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, "Error decoding artist list")
+	if err := cursor.All(ctx, &artists); err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Error decoding artists")
 		return
 	}
 
 	utils.RespondWithJSON(w, http.StatusOK, artists)
 }
-func parseArtistFormData(r *http.Request, existing *models.Artist) (models.Artist, bson.M, error) {
+
+func parseArtistFormData(r *http.Request, existing *models.Artist) (models.Artist, bson.M, []string, error) {
 	var artist models.Artist
-	var updateData bson.M = bson.M{}
+	updateData := bson.M{}
+	filesToDelete := []string{}
 
-	artist.Name = r.FormValue("name")
-	artist.Bio = r.FormValue("bio")
-	artist.Category = r.FormValue("category")
-	artist.DOB = r.FormValue("dob")
-	artist.Place = r.FormValue("place")
-	artist.Country = r.FormValue("country")
+	// Preserve IDs when updating
+	if existing != nil {
+		artist.ArtistID = existing.ArtistID
+		artist.EventIDs = existing.EventIDs
+	}
 
+	// Simple fields
+	assignField := func(key string, target *string, existingVal string) {
+		if val := r.FormValue(key); val != "" {
+			*target = val
+			updateData[key] = val
+		} else {
+			*target = existingVal
+		}
+	}
+
+	assignField("name", &artist.Name, existingValue(existing, "Name"))
+	assignField("bio", &artist.Bio, existingValue(existing, "Bio"))
+	assignField("category", &artist.Category, existingValue(existing, "Category"))
+	assignField("dob", &artist.DOB, existingValue(existing, "DOB"))
+	assignField("place", &artist.Place, existingValue(existing, "Place"))
+	assignField("country", &artist.Country, existingValue(existing, "Country"))
+
+	artist.CreatorID = utils.GetUserIDFromRequest(r)
+	if artist.CreatorID != "" {
+		updateData["creatorid"] = artist.CreatorID
+	} else if existing != nil {
+		artist.CreatorID = existing.CreatorID
+	}
+
+	// Genres
 	if val := r.FormValue("genres"); val != "" {
-		genres := []string{}
+		var genres []string
 		for _, g := range strings.Split(val, ",") {
-			g = strings.TrimSpace(g)
-			if g != "" {
+			if g = strings.TrimSpace(g); g != "" {
 				genres = append(genres, g)
 			}
 		}
 		artist.Genres = genres
 		updateData["genres"] = genres
+	} else if existing != nil {
+		artist.Genres = existing.Genres
 	}
 
+	// Socials
 	if val := r.FormValue("socials"); val != "" {
 		var socials map[string]string
 		if err := json.Unmarshal([]byte(val), &socials); err == nil {
@@ -133,46 +134,40 @@ func parseArtistFormData(r *http.Request, existing *models.Artist) (models.Artis
 			artist.Socials = map[string]string{"raw": val}
 			updateData["socials"] = artist.Socials
 		}
-	}
-
-	// Banner upload
-	if banner, err := filemgr.SaveFormFile(r.MultipartForm, "banner", filemgr.EntityArtist, filemgr.PicBanner, false); err == nil && banner != "" {
-		artist.Banner = banner
-		updateData["banner"] = banner
-		if existing != nil && existing.Banner != "" && existing.Banner != banner {
-			_ = os.Remove(filepath.Join(filemgr.ResolvePath(filemgr.EntityArtist, filemgr.PicBanner), existing.Banner))
-		}
 	} else if existing != nil {
-		artist.Banner = existing.Banner
+		artist.Socials = existing.Socials
 	}
 
-	// Photo upload
-	if photo, err := filemgr.SaveFormFile(r.MultipartForm, "photo", filemgr.EntityArtist, filemgr.PicPhoto, false); err == nil && photo != "" {
-		artist.Photo = photo
-		updateData["photo"] = photo
-		if existing != nil && existing.Photo != "" && existing.Photo != photo {
-			_ = os.Remove(filepath.Join(filemgr.ResolvePath(filemgr.EntityArtist, filemgr.PicPhoto), existing.Photo))
+	// Uploads
+	handleImageUpload := func(formKey string, picType filemgr.PictureType, existingFile string) string {
+		if img, err := filemgr.SaveFormFile(r.MultipartForm, formKey, filemgr.EntityArtist, picType, false); err == nil && img != "" {
+			updateData[formKey] = img
+			if existingFile != "" && existingFile != img {
+				filesToDelete = append(filesToDelete, filepath.Join(filemgr.ResolvePath(filemgr.EntityArtist, picType), existingFile))
+			}
+			return img
 		}
-	} else if existing != nil {
-		artist.Photo = existing.Photo
+		return existingFile
 	}
 
-	// Parse members and handle member image uploads
-	var members []models.BandMember
+	artist.Banner = handleImageUpload("banner", filemgr.PicBanner, existingValue(existing, "Banner"))
+	artist.Photo = handleImageUpload("photo", filemgr.PicPhoto, existingValue(existing, "Photo"))
+
+	// Members
 	if raw := r.FormValue("members"); raw != "" {
+		var members []models.BandMember
 		if err := json.Unmarshal([]byte(raw), &members); err == nil {
 			for i := range members {
 				fileKey := fmt.Sprintf("memberImage_%d", i)
 				file, header, err := r.FormFile(fileKey)
 				if err == nil {
 					defer file.Close()
-					filename, err := filemgr.SaveFileForEntity(file, header, filemgr.EntityArtist, filemgr.PicMember)
-					if err != nil {
-						return artist, updateData, fmt.Errorf("failed to save member image: %v", err)
+					filename, ferr := filemgr.SaveFileForEntity(file, header, filemgr.EntityArtist, filemgr.PicMember)
+					if ferr != nil {
+						return artist, updateData, filesToDelete, fmt.Errorf("failed to save member image: %v", ferr)
 					}
-					// Remove old image if changed
 					if existing != nil && i < len(existing.Members) && existing.Members[i].Image != filename {
-						_ = os.Remove(filepath.Join(filemgr.ResolvePath(filemgr.EntityArtist, filemgr.PicMember), existing.Members[i].Image))
+						filesToDelete = append(filesToDelete, filepath.Join(filemgr.ResolvePath(filemgr.EntityArtist, filemgr.PicMember), existing.Members[i].Image))
 					}
 					members[i].Image = filename
 				} else if existing != nil && i < len(existing.Members) {
@@ -186,7 +181,7 @@ func parseArtistFormData(r *http.Request, existing *models.Artist) (models.Artis
 		artist.Members = existing.Members
 	}
 
-	return artist, updateData, nil
+	return artist, updateData, filesToDelete, nil
 }
 
 func CreateArtist(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
@@ -196,7 +191,7 @@ func CreateArtist(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		return
 	}
 
-	artist, _, err := parseArtistFormData(r, nil)
+	artist, _, _, err := parseArtistFormData(r, nil)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -210,7 +205,6 @@ func CreateArtist(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		return
 	}
 
-	// ✅ Emit event for messaging queue (if needed)
 	go mq.Emit(ctx, "artist-created", models.Index{
 		EntityType: "artist", EntityId: artist.ArtistID, Method: "POST",
 	})
@@ -233,16 +227,14 @@ func UpdateArtist(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 		return
 	}
 
-	updated, updateData, err := parseArtistFormData(r, &existing)
+	updated, updateData, filesToDelete, err := parseArtistFormData(r, &existing)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-
 	_ = updated
-
 	if len(updateData) == 0 {
-		utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "No changes detected"})
+		utils.RespondWithJSON(w, http.StatusOK, bson.M{"message": "No changes detected"})
 		return
 	}
 
@@ -252,364 +244,17 @@ func UpdateArtist(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 		return
 	}
 
-	// ✅ Emit event for messaging queue (if needed)
+	// Only delete files if DB update succeeded
+	for _, path := range filesToDelete {
+		_ = os.Remove(path)
+	}
+
 	go mq.Emit(ctx, "artist-updated", models.Index{
 		EntityType: "artist", EntityId: idParam, Method: "PUT",
 	})
-	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "Artist updated"})
+
+	utils.RespondWithJSON(w, http.StatusOK, bson.M{"message": "Artist updated"})
 }
-
-// func CreateArtist(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-// 	if err := r.ParseMultipartForm(10 << 20); err != nil {
-// 		utils.RespondWithError(w, http.StatusBadRequest, "Failed to parse form data")
-// 		return
-// 	}
-
-// 	var socials map[string]string
-// 	if data := r.FormValue("socials"); data != "" {
-// 		if err := json.Unmarshal([]byte(data), &socials); err != nil {
-// 			socials = map[string]string{"default": data}
-// 		}
-// 	}
-
-// 	var members []models.BandMember
-// 	if data := r.FormValue("members"); data != "" {
-// 		if err := json.Unmarshal([]byte(data), &members); err != nil {
-// 			members = []models.BandMember{}
-// 		}
-// 	}
-
-// 	for i := range members {
-// 		fileKey := fmt.Sprintf("memberImage_%d", i)
-// 		file, header, err := r.FormFile(fileKey)
-// 		if err == nil {
-// 			defer file.Close()
-// 			filename, err := filemgr.SaveFileForEntity(file, header, filemgr.EntityArtist, filemgr.PicMember)
-// 			if err != nil {
-// 				utils.RespondWithError(w, http.StatusInternalServerError, "Error saving member image")
-// 				return
-// 			}
-// 			members[i].Image = filename
-// 		}
-// 	}
-
-// 	var genres []string
-// 	if raw := strings.TrimSpace(r.FormValue("genres")); raw != "" {
-// 		for _, g := range strings.Split(raw, ",") {
-// 			g = strings.TrimSpace(g)
-// 			if g != "" {
-// 				genres = append(genres, g)
-// 			}
-// 		}
-// 	}
-
-// 	artist := models.Artist{
-// 		ArtistID: utils.GenerateID(12),
-// 		Name:     r.FormValue("name"),
-// 		Bio:      r.FormValue("bio"),
-// 		Category: r.FormValue("category"),
-// 		DOB:      r.FormValue("dob"),
-// 		Place:    r.FormValue("place"),
-// 		Country:  r.FormValue("country"),
-// 		Genres:   genres,
-// 		Socials:  socials,
-// 		Members:  members,
-// 		EventIDs: []string{},
-// 	}
-
-// 	if banner, err := filemgr.SaveFormFile(r.MultipartForm, "banner", filemgr.EntityArtist, filemgr.PicBanner, false); err == nil && banner != "" {
-// 		artist.Banner = banner
-// 	}
-// 	if photo, err := filemgr.SaveFormFile(r.MultipartForm, "photo", filemgr.EntityArtist, filemgr.PicPhoto, false); err == nil && photo != "" {
-// 		artist.Photo = photo
-// 	}
-
-// 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-// 	defer cancel()
-
-// 	if _, err := db.ArtistsCollection.InsertOne(ctx, artist); err != nil {
-// 		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to create artist")
-// 		return
-// 	}
-
-// 	utils.RespondWithJSON(w, http.StatusCreated, artist)
-// }
-
-// func UpdateArtist(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-// 	idParam := ps.ByName("id")
-
-// 	if err := r.ParseMultipartForm(20 << 20); err != nil {
-// 		utils.RespondWithError(w, http.StatusBadRequest, "Failed to parse form data")
-// 		return
-// 	}
-
-// 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-// 	defer cancel()
-
-// 	var existing models.Artist
-// 	if err := db.ArtistsCollection.FindOne(ctx, bson.M{"artistid": idParam}).Decode(&existing); err != nil {
-// 		utils.RespondWithError(w, http.StatusNotFound, "Artist not found")
-// 		return
-// 	}
-
-// 	updateData := bson.M{}
-// 	formFields := map[string]string{
-// 		"category": r.FormValue("category"),
-// 		"name":     r.FormValue("name"),
-// 		"bio":      r.FormValue("bio"),
-// 		"dob":      r.FormValue("dob"),
-// 		"place":    r.FormValue("place"),
-// 		"country":  r.FormValue("country"),
-// 		"genres":   r.FormValue("genres"),
-// 		"socials":  r.FormValue("socials"),
-// 	}
-
-// 	for key, val := range formFields {
-// 		if strings.TrimSpace(val) == "" {
-// 			continue
-// 		}
-// 		switch key {
-// 		case "genres":
-// 			updateData["genres"] = strings.Split(val, ",")
-// 		case "socials":
-// 			var socials map[string]string
-// 			if err := json.Unmarshal([]byte(val), &socials); err != nil {
-// 				socials = map[string]string{"raw": val}
-// 			}
-// 			updateData["socials"] = socials
-// 		default:
-// 			updateData[key] = val
-// 		}
-// 	}
-
-// 	if banner, err := filemgr.SaveFormFile(r.MultipartForm, "banner", filemgr.EntityArtist, filemgr.PicBanner, false); err == nil && banner != "" {
-// 		updateData["banner"] = banner
-// 		if existing.Banner != "" && existing.Banner != banner {
-// 			_ = os.Remove(filepath.Join(filemgr.ResolvePath(filemgr.EntityArtist, filemgr.PicBanner), existing.Banner))
-// 		}
-// 	}
-
-// 	if photo, err := filemgr.SaveFormFile(r.MultipartForm, "photo", filemgr.EntityArtist, filemgr.PicPhoto, false); err == nil && photo != "" {
-// 		updateData["photo"] = photo
-// 		if existing.Photo != "" && existing.Photo != photo {
-// 			_ = os.Remove(filepath.Join(filemgr.ResolvePath(filemgr.EntityArtist, filemgr.PicPhoto), existing.Photo))
-// 		}
-// 	}
-
-// 	if membersRaw := r.FormValue("members"); membersRaw != "" {
-// 		var newMembers []models.BandMember
-// 		if err := json.Unmarshal([]byte(membersRaw), &newMembers); err == nil {
-// 			for i := range newMembers {
-// 				fileKey := fmt.Sprintf("memberImage_%d", i)
-// 				file, header, err := r.FormFile(fileKey)
-// 				if err == nil {
-// 					defer file.Close()
-// 					filename, err := filemgr.SaveFileForEntity(file, header, filemgr.EntityArtist, filemgr.PicMember)
-// 					if err != nil {
-// 						utils.RespondWithError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save image for member %d", i))
-// 						return
-// 					}
-// 					if i < len(existing.Members) && existing.Members[i].Image != filename {
-// 						_ = os.Remove(filepath.Join(filemgr.ResolvePath(filemgr.EntityArtist, filemgr.PicMember), existing.Members[i].Image))
-// 					}
-// 					newMembers[i].Image = filename
-// 				} else if i < len(existing.Members) {
-// 					newMembers[i].Image = existing.Members[i].Image
-// 				}
-// 			}
-// 			updateData["members"] = newMembers
-// 		}
-// 	}
-
-// 	if len(updateData) == 0 {
-// 		utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "No changes detected"})
-// 		return
-// 	}
-
-// 	result, err := db.ArtistsCollection.UpdateOne(ctx, bson.M{"artistid": idParam}, bson.M{"$set": updateData})
-// 	if err != nil || result.MatchedCount == 0 {
-// 		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to update artist")
-// 		return
-// 	}
-
-// 	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "Artist updated"})
-// }
-
-// func CreateArtist(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-// 	if err := r.ParseMultipartForm(10 << 20); err != nil {
-// 		utils.RespondWithError(w, http.StatusBadRequest, "Failed to parse form data")
-// 		return
-// 	}
-
-// 	var socials map[string]string
-// 	if data := r.FormValue("socials"); data != "" {
-// 		if err := json.Unmarshal([]byte(data), &socials); err != nil {
-// 			socials = map[string]string{"default": data}
-// 		}
-// 	}
-
-// 	var members []models.BandMember
-// 	if data := r.FormValue("members"); data != "" {
-// 		if err := json.Unmarshal([]byte(data), &members); err != nil {
-// 			members = []models.BandMember{}
-// 		}
-// 	}
-
-// 	for i := range members {
-// 		fileKey := fmt.Sprintf("memberImage_%d", i)
-// 		file, header, err := r.FormFile(fileKey)
-// 		if err == nil {
-// 			defer file.Close()
-// 			filename, err := filemgr.SaveFile(file, header, "static/artistpic/members")
-// 			if err != nil {
-// 				utils.RespondWithError(w, http.StatusInternalServerError, "Error saving member image")
-// 				return
-// 			}
-// 			members[i].Image = filename
-// 		}
-// 	}
-
-// 	var genres []string
-// 	if raw := strings.TrimSpace(r.FormValue("genres")); raw != "" {
-// 		for _, g := range strings.Split(raw, ",") {
-// 			g = strings.TrimSpace(g)
-// 			if g != "" {
-// 				genres = append(genres, g)
-// 			}
-// 		}
-// 	}
-
-// 	artist := models.Artist{
-// 		ArtistID: utils.GenerateID(12),
-// 		Name:     r.FormValue("name"),
-// 		Bio:      r.FormValue("bio"),
-// 		Category: r.FormValue("category"),
-// 		DOB:      r.FormValue("dob"),
-// 		Place:    r.FormValue("place"),
-// 		Country:  r.FormValue("country"),
-// 		Genres:   genres,
-// 		Socials:  socials,
-// 		Members:  members,
-// 		EventIDs: []string{},
-// 	}
-
-// 	if banner, err := filemgr.SaveFormFile(r, "banner", "static/artistpic/banner", false); err == nil && banner != "" {
-// 		artist.Banner = banner
-// 	}
-// 	if photo, err := filemgr.SaveFormFile(r, "photo", "static/artistpic/photo", false); err == nil && photo != "" {
-// 		artist.Photo = photo
-// 	}
-
-// 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-// 	defer cancel()
-
-// 	if _, err := db.ArtistsCollection.InsertOne(ctx, artist); err != nil {
-// 		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to create artist")
-// 		return
-// 	}
-
-// 	utils.RespondWithJSON(w, http.StatusCreated, artist)
-// }
-
-// func UpdateArtist(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-// 	idParam := ps.ByName("id")
-
-// 	if err := r.ParseMultipartForm(20 << 20); err != nil {
-// 		utils.RespondWithError(w, http.StatusBadRequest, "Failed to parse form data")
-// 		return
-// 	}
-
-// 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-// 	defer cancel()
-
-// 	var existing models.Artist
-// 	if err := db.ArtistsCollection.FindOne(ctx, bson.M{"artistid": idParam}).Decode(&existing); err != nil {
-// 		utils.RespondWithError(w, http.StatusNotFound, "Artist not found")
-// 		return
-// 	}
-
-// 	updateData := bson.M{}
-// 	formFields := map[string]string{
-// 		"category": r.FormValue("category"),
-// 		"name":     r.FormValue("name"),
-// 		"bio":      r.FormValue("bio"),
-// 		"dob":      r.FormValue("dob"),
-// 		"place":    r.FormValue("place"),
-// 		"country":  r.FormValue("country"),
-// 		"genres":   r.FormValue("genres"),
-// 		"socials":  r.FormValue("socials"),
-// 	}
-
-// 	for key, val := range formFields {
-// 		if strings.TrimSpace(val) == "" {
-// 			continue
-// 		}
-// 		switch key {
-// 		case "genres":
-// 			updateData["genres"] = strings.Split(val, ",")
-// 		case "socials":
-// 			var socials map[string]string
-// 			if err := json.Unmarshal([]byte(val), &socials); err != nil {
-// 				socials = map[string]string{"raw": val}
-// 			}
-// 			updateData["socials"] = socials
-// 		default:
-// 			updateData[key] = val
-// 		}
-// 	}
-
-// 	if banner, err := filemgr.SaveFormFile(r, "banner", "static/artistpic/banner", false); err == nil && banner != "" {
-// 		updateData["banner"] = banner
-// 		if existing.Banner != "" && existing.Banner != banner {
-// 			_ = os.Remove(filepath.Join("static/artistpic/banner", existing.Banner))
-// 		}
-// 	}
-
-// 	if photo, err := filemgr.SaveFormFile(r, "photo", "static/artistpic/photo", false); err == nil && photo != "" {
-// 		updateData["photo"] = photo
-// 		if existing.Photo != "" && existing.Photo != photo {
-// 			_ = os.Remove(filepath.Join("static/artistpic/photo", existing.Photo))
-// 		}
-// 	}
-
-// 	if membersRaw := r.FormValue("members"); membersRaw != "" {
-// 		var newMembers []models.BandMember
-// 		if err := json.Unmarshal([]byte(membersRaw), &newMembers); err == nil {
-// 			for i := range newMembers {
-// 				fileKey := fmt.Sprintf("memberImage_%d", i)
-// 				file, header, err := r.FormFile(fileKey)
-// 				if err == nil {
-// 					defer file.Close()
-// 					filename, err := filemgr.SaveFile(file, header, "static/artistpic/members")
-// 					if err != nil {
-// 						utils.RespondWithError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save image for member %d", i))
-// 						return
-// 					}
-// 					if i < len(existing.Members) && existing.Members[i].Image != filename {
-// 						_ = os.Remove(filepath.Join("static/artistpic/members", existing.Members[i].Image))
-// 					}
-// 					newMembers[i].Image = filename
-// 				} else if i < len(existing.Members) {
-// 					newMembers[i].Image = existing.Members[i].Image
-// 				}
-// 			}
-// 			updateData["members"] = newMembers
-// 		}
-// 	}
-
-// 	if len(updateData) == 0 {
-// 		utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "No changes detected"})
-// 		return
-// 	}
-
-// 	result, err := db.ArtistsCollection.UpdateOne(ctx, bson.M{"artistid": idParam}, bson.M{"$set": updateData})
-// 	if err != nil || result.MatchedCount == 0 {
-// 		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to update artist")
-// 		return
-// 	}
-
-// 	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "Artist updated"})
-// }
 
 func DeleteArtistByID(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	ctx := r.Context()
@@ -621,18 +266,44 @@ func DeleteArtistByID(w http.ResponseWriter, r *http.Request, ps httprouter.Para
 	}
 
 	filter := bson.M{"artistid": artistID}
-	update := bson.M{"deleted": true}
+	update := bson.M{"$set": bson.M{"deleted": true}}
 
-	_, err := db.ArtistsCollection.UpdateOne(context.TODO(), filter, update)
+	_, err := db.ArtistsCollection.UpdateOne(ctx, filter, update)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to delete artist")
 		return
 	}
 
-	// ✅ Emit event for messaging queue (if needed)
 	go mq.Emit(ctx, "artist-deleted", models.Index{
 		EntityType: "artist", EntityId: artistID, Method: "DELETE",
 	})
 
 	utils.RespondWithJSON(w, http.StatusOK, bson.M{"message": "Artist deleted successfully"})
+}
+
+// Helpers to get existing values without reflection
+func existingValue(existing *models.Artist, field string) string {
+	if existing == nil {
+		return ""
+	}
+	switch field {
+	case "Name":
+		return existing.Name
+	case "Bio":
+		return existing.Bio
+	case "Category":
+		return existing.Category
+	case "DOB":
+		return existing.DOB
+	case "Place":
+		return existing.Place
+	case "Country":
+		return existing.Country
+	case "Banner":
+		return existing.Banner
+	case "Photo":
+		return existing.Photo
+	default:
+		return ""
+	}
 }

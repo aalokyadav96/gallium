@@ -53,7 +53,6 @@ func getSafe(arr []string, index int) string {
 	return ""
 }
 
-// Recipes
 func GetRecipes(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
@@ -68,11 +67,18 @@ func GetRecipes(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	if ing := r.URL.Query().Get("ingredient"); ing != "" {
 		filter["ingredients.name"] = bson.M{"$regex": regexp.QuoteMeta(ing), "$options": "i"}
 	}
+	if tags := r.URL.Query().Get("tags"); tags != "" {
+		tagList := strings.Split(tags, ",")
+		filter["tags"] = bson.M{"$all": tagList}
+	}
 
 	skip, limit := utils.ParsePagination(r, 10, 100)
+
 	sort := utils.ParseSort(r.URL.Query().Get("sort"), bson.D{{Key: "createdAt", Value: -1}}, map[string]bson.D{
-		"oldest":  {{Key: "createdAt", Value: 1}},
-		"popular": {{Key: "views", Value: -1}},
+		"newest":   {{Key: "createdAt", Value: -1}},
+		"oldest":   {{Key: "createdAt", Value: 1}},
+		"views":    {{Key: "views", Value: -1}},
+		"prepTime": {{Key: "prepTime", Value: 1}},
 	})
 
 	opts := options.Find().SetSort(sort).SetSkip(skip).SetLimit(limit)
@@ -82,7 +88,22 @@ func GetRecipes(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		return
 	}
 
-	utils.JSON(w, http.StatusOK, recipes)
+	// Get total count for pagination
+	totalCount, err := db.RecipeCollection.CountDocuments(ctx, filter)
+	if err != nil {
+		utils.Error(w, http.StatusInternalServerError, "Failed to count recipes")
+		return
+	}
+
+	hasMore := (skip + limit) < int64(totalCount)
+
+	// Return wrapped response
+	resp := map[string]interface{}{
+		"recipes": recipes,
+		"hasMore": hasMore,
+	}
+
+	utils.JSON(w, http.StatusOK, resp)
 }
 
 // // --- Handlers ---

@@ -769,7 +769,7 @@ type Event struct {
 	StartDateTime    time.Time `json:"start_date_time" bson:"start_date_time"`
 	EndDateTime      time.Time `json:"end_date_time" bson:"end_date_time"`
 	Category         string    `json:"category" bson:"category"`
-	BannerImage      string    `json:"banner_image" bson:"banner_image"`
+	Banner           string    `json:"banner" bson:"banner"`
 	SeatingPlanImage string    `json:"seatingplan" bson:"seatingplan"`
 	WebsiteURL       string    `json:"website_url" bson:"website_url"`
 	Status           string    `json:"status" bson:"status"`

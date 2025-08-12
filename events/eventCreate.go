@@ -49,7 +49,7 @@ func CreateEvent(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 
 	// Banner upload
 	if name, err := processEventImageUpload(r, "banner", filemgr.EntityEvent, filemgr.PicBanner, event.EventID, true); err == nil && name != "" {
-		event.BannerImage = name
+		event.Banner = name
 	} else if err != nil {
 		http.Error(w, "Banner upload failed: "+err.Error(), http.StatusInternalServerError)
 		return

@@ -79,7 +79,7 @@ func setupRouter(rateLimiter *ratelim.RateLimiter) *httprouter.Router {
 	routes.AddMapRoutes(router, rateLimiter)
 	routes.AddMediaRoutes(router, rateLimiter)
 	routes.AddMerchRoutes(router, rateLimiter)
-	routes.AddNewSearchRoutes(router, rateLimiter)
+	routes.AddBannerRoutes(router, rateLimiter)
 	routes.AddPlaceRoutes(router, rateLimiter)
 	routes.AddPlaceTabRoutes(router, rateLimiter)
 	routes.AddPostRoutes(router, rateLimiter)
