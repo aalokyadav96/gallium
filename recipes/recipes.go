@@ -53,6 +53,74 @@ func getSafe(arr []string, index int) string {
 	return ""
 }
 
+// Recipes
+// func GetRecipes(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+// 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+// 	defer cancel()
+
+// 	filter := bson.M{}
+// 	if search := r.URL.Query().Get("search"); search != "" {
+// 		filter["$or"] = []bson.M{
+// 			utils.RegexFilter("title", search),
+// 			utils.RegexFilter("description", search),
+// 		}
+// 	}
+// 	if ing := r.URL.Query().Get("ingredient"); ing != "" {
+// 		filter["ingredients.name"] = bson.M{"$regex": regexp.QuoteMeta(ing), "$options": "i"}
+// 	}
+
+// 	skip, limit := utils.ParsePagination(r, 10, 100)
+// 	sort := utils.ParseSort(r.URL.Query().Get("sort"), bson.D{{Key: "createdAt", Value: -1}}, map[string]bson.D{
+// 		"oldest":  {{Key: "createdAt", Value: 1}},
+// 		"popular": {{Key: "views", Value: -1}},
+// 	})
+
+// 	opts := options.Find().SetSort(sort).SetSkip(skip).SetLimit(limit)
+// 	recipes, err := utils.FindAndDecode[models.Recipe](ctx, db.RecipeCollection, filter, opts)
+// 	if err != nil {
+// 		utils.Error(w, http.StatusInternalServerError, "Failed to fetch recipes")
+// 		return
+// 	}
+
+//		utils.JSON(w, http.StatusOK, recipes)
+//	}
+//
+
+// // Recipes
+// func GetRecipes(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+// 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+// 	defer cancel()
+
+// 	filter := bson.M{}
+// 	if search := r.URL.Query().Get("search"); search != "" {
+// 		filter["$or"] = []bson.M{
+// 			utils.RegexFilter("title", search),
+// 			utils.RegexFilter("description", search),
+// 		}
+// 	}
+// 	if ing := r.URL.Query().Get("ingredient"); ing != "" {
+// 		filter["ingredients.name"] = bson.M{"$regex": regexp.QuoteMeta(ing), "$options": "i"}
+// 	}
+
+// 	skip, limit := utils.ParsePagination(r, 10, 100)
+
+// 	// Updated mapping to match frontend's sort keys
+// 	sort := utils.ParseSort(r.URL.Query().Get("sort"), bson.D{{Key: "createdAt", Value: -1}}, map[string]bson.D{
+// 		"newest":   {{Key: "createdAt", Value: -1}},
+// 		"oldest":   {{Key: "createdAt", Value: 1}},
+// 		"views":    {{Key: "views", Value: -1}},
+// 		"prepTime": {{Key: "prepTime", Value: 1}}, // ascending = shortest first
+// 	})
+
+// 	opts := options.Find().SetSort(sort).SetSkip(skip).SetLimit(limit)
+// 	recipes, err := utils.FindAndDecode[models.Recipe](ctx, db.RecipeCollection, filter, opts)
+// 	if err != nil {
+// 		utils.Error(w, http.StatusInternalServerError, "Failed to fetch recipes")
+// 		return
+// 	}
+
+//		utils.JSON(w, http.StatusOK, recipes)
+//	}
 func GetRecipes(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()

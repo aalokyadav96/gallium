@@ -406,68 +406,16 @@ func GetWorkers(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		return
 	}
 
+	if len(workers) == 0 {
+		workers = []models.BaitoWorker{}
+	}
+
 	total, _ := db.BaitoWorkerCollection.CountDocuments(ctx, filter)
 	utils.JSON(w, http.StatusOK, map[string]any{
 		"data":  workers,
 		"total": total,
 	})
 }
-
-// func GetWorkers(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-// 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-// 	defer cancel()
-
-// 	search := strings.TrimSpace(r.URL.Query().Get("search"))
-// 	skill := strings.TrimSpace(r.URL.Query().Get("skill"))
-// 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-// 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-
-// 	if page <= 0 {
-// 		page = 1
-// 	}
-// 	if limit <= 0 {
-// 		limit = 10
-// 	}
-
-// 	query := bson.M{}
-// 	if search != "" {
-// 		query["$or"] = bson.A{
-// 			bson.M{"name": bson.M{"$regex": search, "$options": "i"}},
-// 			bson.M{"address": bson.M{"$regex": search, "$options": "i"}},
-// 		}
-// 	}
-// 	if skill != "" {
-// 		query["preferred_roles"] = skill
-// 	}
-
-// 	skip := (page - 1) * limit
-// 	opts := options.Find().SetSkip(int64(skip)).SetLimit(int64(limit)).SetSort(bson.M{"created_at": -1})
-
-// 	cursor, err := db.BaitoWorkerCollection.Find(ctx, query, opts)
-// 	if err != nil {
-// 		log.Printf("DB error: %v", err)
-// 		respondError(w, http.StatusInternalServerError, "Error querying workers")
-// 		return
-// 	}
-// 	defer cursor.Close(ctx)
-
-// 	var workers []models.BaitoWorker
-// 	if err := cursor.All(ctx, &workers); err != nil {
-// 		log.Printf("Decode error: %v", err)
-// 		respondError(w, http.StatusInternalServerError, "Failed to parse results")
-// 		return
-// 	}
-
-// 	if len(workers) == 0 {
-// 		workers = []models.BaitoWorker{}
-// 	}
-
-// 	total, _ := db.BaitoWorkerCollection.CountDocuments(ctx, query)
-// 	respondJSON(w, http.StatusOK, map[string]any{
-// 		"data":  workers,
-// 		"total": total,
-// 	})
-// }
 
 func GetWorkerSkills(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)

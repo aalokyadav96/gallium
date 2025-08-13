@@ -273,6 +273,94 @@ func GetPlaceQ(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 // 	}, nil
 // }
 
+// // func parsePlaceFormData(_ http.ResponseWriter, r *http.Request) (models.Place, error) {
+// // 	err := r.ParseMultipartForm(10 << 20) // 10MB limit
+// // 	if err != nil {
+// // 		return models.Place{}, fmt.Errorf("unable to parse form")
+// // 	}
+
+// // 	// Required fields
+// // 	name := strings.TrimSpace(r.FormValue("name"))
+// // 	address := strings.TrimSpace(r.FormValue("address"))
+// // 	description := strings.TrimSpace(r.FormValue("description"))
+// // 	category := strings.TrimSpace(r.FormValue("category"))
+// // 	capacityStr := strings.TrimSpace(r.FormValue("capacity"))
+
+// // 	if name == "" || address == "" || description == "" || category == "" || capacityStr == "" {
+// // 		return models.Place{}, fmt.Errorf("all required fields must be filled")
+// // 	}
+
+// // 	capacity, err := strconv.Atoi(capacityStr)
+// // 	if err != nil || capacity <= 0 {
+// // 		return models.Place{}, fmt.Errorf("capacity must be a positive integer")
+// // 	}
+
+// // 	// Optional fields
+// // 	city := strings.TrimSpace(r.FormValue("city"))
+// // 	country := strings.TrimSpace(r.FormValue("country"))
+// // 	zipcode := strings.TrimSpace(r.FormValue("zipCode"))
+// // 	phone := strings.TrimSpace(r.FormValue("phone"))
+
+// // 	// Banner handling (optional)
+// // 	var bannerFilename string
+// // 	file, handler, err := r.FormFile("banner")
+// // 	if err == nil && file != nil {
+// // 		defer file.Close()
+// // 		// Save or process the file here, for now we just read filename
+// // 		bannerFilename = handler.Filename
+// // 		// Actual storage logic goes here...
+// // 	}
+
+// // 	return models.Place{
+// // 		PlaceID:     utils.GenerateID(14),
+// // 		Name:        name,
+// // 		Address:     address,
+// // 		Description: description,
+// // 		Category:    category,
+// // 		Capacity:    capacity,
+// // 		Banner:      bannerFilename,
+// // 		Phone:       phone,
+// // 		City:        city,
+// // 		Country:     country,
+// // 		ZipCode:     zipcode,
+// // 		CreatedAt:   time.Now(),
+// // 		ReviewCount: 0,
+// // 		Status:      "active",
+// // 	}, nil
+// // }
+
+// // Creates a new place
+// func CreatePlace(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+// 	ctx := r.Context()
+// 	place, err := parsePlaceFormData(w, r)
+// 	if err != nil {
+// 		http.Error(w, err.Error(), http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	// Retrieve user ID
+// 	requestingUserID, ok := r.Context().Value(globals.UserIDKey).(string)
+// 	if !ok {
+// 		http.Error(w, "Invalid user", http.StatusBadRequest)
+// 		return
+// 	}
+// 	place.CreatedBy = requestingUserID
+
+// 	// Insert into MongoDB
+// 	_, err = db.PlacesCollection.InsertOne(context.TODO(), place)
+// 	if err != nil {
+// 		http.Error(w, "Error creating place", http.StatusInternalServerError)
+// 		return
+// 	}
+
+// 	autocom.AddPlaceToAutocorrect(rdx.Conn, place.PlaceID, place.Name)
+
+// 	userdata.SetUserData("place", place.PlaceID, requestingUserID, "", "")
+// 	go mq.Emit(ctx, "place-created", models.Index{EntityType: "place", EntityId: place.PlaceID, Method: "POST"})
+
+//		utils.RespondWithJSON(w, http.StatusCreated, place)
+//	}
+//
 // parseAndBuildPlace parses form data and returns a Place object and updateFields map.
 // mode: "create" or "update"
 func parseAndBuildPlace(r *http.Request, mode string) (models.Place, bson.M, error) {

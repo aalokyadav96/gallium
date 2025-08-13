@@ -36,37 +36,70 @@ var (
 	AllowedExtensions = map[PictureType][]string{
 		PicPhoto:    {".jpg", ".jpeg", ".png", ".gif", ".webp"},
 		PicThumb:    {".jpg"},
-		PicPoster:   {".jpg", ".jpeg", ".png"},
-		PicBanner:   {".jpg", ".jpeg", ".png"},
-		PicMember:   {".jpg", ".jpeg", ".png"},
-		PicSeating:  {".jpg", ".jpeg", ".png"},
+		PicPoster:   {".jpg", ".jpeg", ".png", ".webp"},
+		PicBanner:   {".jpg", ".jpeg", ".png", ".webp"},
+		PicMember:   {".jpg", ".jpeg", ".png", ".webp"},
+		PicSeating:  {".jpg", ".jpeg", ".png", ".webp"},
 		PicAudio:    {".mp3", ".wav", ".aac"},
-		PicVideo:    {".mp4", ".mov", ".avi", ".webm"},
-		PicDocument: {".pdf", ".doc", ".docx", ".txt"},
-		PicFile:     {".pdf", ".doc", ".docx", ".jpg", ".jpeg", ".png", ".mp3", ".mp4", ".mov", ".avi", ".webm"},
+		PicVideo:    {".mp4", ".webm"},
+		PicDocument: {".pdf"},
+		PicFile:     {".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp3", ".mp4", ".webm"},
 	}
 
 	AllowedMIMEs = map[PictureType][]string{
 		PicPhoto:   {"image/jpeg", "image/png", "image/gif", "image/webp"},
 		PicThumb:   {"image/jpeg"},
-		PicPoster:  {"image/jpeg", "image/png"},
-		PicBanner:  {"image/jpeg", "image/png"},
-		PicMember:  {"image/jpeg", "image/png"},
-		PicSeating: {"image/jpeg", "image/png"},
+		PicPoster:  {"image/jpeg", "image/png", "image/webp"},
+		PicBanner:  {"image/jpeg", "image/png", "image/webp"},
+		PicMember:  {"image/jpeg", "image/png", "image/webp"},
+		PicSeating: {"image/jpeg", "image/png", "image/webp"},
 		PicAudio:   {"audio/mpeg", "audio/wav", "audio/aac"},
-		PicVideo:   {"video/mp4", "video/quicktime", "video/x-msvideo", "video/webm"},
+		PicVideo:   {"video/mp4", "video/webm"},
 		PicDocument: {
-			"application/pdf", "application/msword",
-			"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-			"text/plain",
+			"application/pdf",
 		},
 		PicFile: {
-			"application/pdf", "application/msword",
-			"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+			"application/pdf",
 			"image/jpeg", "image/png", "image/gif", "image/webp",
-			"audio/mpeg", "audio/wav", "video/mp4", "video/webm", "video/quicktime", "video/x-msvideo",
+			"audio/mpeg", "audio/wav",
+			"video/mp4", "video/webm",
 		},
 	}
+
+	// AllowedExtensions = map[PictureType][]string{
+	//	PicPhoto:    {".jpg", ".jpeg", ".png", ".gif", ".webp"},
+	// 	PicThumb:    {".jpg"},
+	// 	PicPoster:   {".jpg", ".jpeg", ".png"},
+	// 	PicBanner:   {".jpg", ".jpeg", ".png"},
+	// 	PicMember:   {".jpg", ".jpeg", ".png"},
+	// 	PicSeating:  {".jpg", ".jpeg", ".png"},
+	// 	PicAudio:    {".mp3", ".wav", ".aac"},
+	// 	PicVideo:    {".mp4", ".mov", ".avi", ".webm"},
+	// 	PicDocument: {".pdf", ".doc", ".docx", ".txt"},
+	// 	PicFile:     {".pdf", ".doc", ".docx", ".jpg", ".jpeg", ".png", ".mp3", ".mp4", ".mov", ".avi", ".webm"},
+	// }
+
+	// AllowedMIMEs = map[PictureType][]string{
+	// 	PicPhoto:   {"image/jpeg", "image/png", "image/gif", "image/webp"},
+	// 	PicThumb:   {"image/jpeg"},
+	// 	PicPoster:  {"image/jpeg", "image/png"},
+	// 	PicBanner:  {"image/jpeg", "image/png"},
+	// 	PicMember:  {"image/jpeg", "image/png"},
+	// 	PicSeating: {"image/jpeg", "image/png"},
+	// 	PicAudio:   {"audio/mpeg", "audio/wav", "audio/aac"},
+	// 	PicVideo:   {"video/mp4", "video/quicktime", "video/x-msvideo", "video/webm"},
+	// 	PicDocument: {
+	// 		"application/pdf", "application/msword",
+	// 		"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+	// 		"text/plain",
+	// 	},
+	// 	PicFile: {
+	// 		"application/pdf", "application/msword",
+	// 		"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+	// 		"image/jpeg", "image/png", "image/gif", "image/webp",
+	// 		"audio/mpeg", "audio/wav", "video/mp4", "video/webm", "video/quicktime", "video/x-msvideo",
+	// 	},
+	// }
 
 	PictureSubfolders = map[PictureType]string{
 		PicBanner:   "banner",

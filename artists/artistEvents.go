@@ -30,32 +30,12 @@ func GetArtistEvents(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 		return
 	}
 
+	if len(artistevents) == 0 {
+		artistevents = []models.ArtistEvent{}
+	}
+
 	utils.JSON(w, http.StatusOK, artistevents)
 }
-
-// // Get Artist Events
-// func GetArtistEvents(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-// 	artistID := ps.ByName("id")
-
-// 	var artistevents []models.ArtistEvent
-// 	cursor, err := db.ArtistEventsCollection.Find(context.TODO(), bson.M{"artistid": artistID})
-// 	if err != nil {
-// 		utils.RespondWithError(w, http.StatusInternalServerError, "Database error")
-// 		return
-// 	}
-// 	defer cursor.Close(context.TODO())
-
-// 	if err := cursor.All(context.TODO(), &artistevents); err != nil {
-// 		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to parse artistevents")
-// 		return
-// 	}
-
-// 	if artistevents == nil {
-// 		artistevents = []models.ArtistEvent{}
-// 	}
-
-// 	utils.RespondWithJSON(w, http.StatusOK, artistevents)
-// }
 
 func CreateArtistEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	ctx := r.Context()
@@ -95,39 +75,6 @@ func CreateArtistEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 		"id":      insertResult.InsertedID,
 	})
 }
-
-// // Create Artist Event
-// func CreateArtistEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-// 	var artistevent models.ArtistEvent
-// 	if err := json.NewDecoder(r.Body).Decode(&artistevent); err != nil {
-// 		utils.RespondWithError(w, http.StatusBadRequest, "Invalid request payload")
-// 		return
-// 	}
-
-// 	artistevent.ArtistID = ps.ByName("id")
-// 	artistevent.EventID = utils.GenerateID(14)
-// 	insertResult, err := db.ArtistEventsCollection.InsertOne(context.TODO(), artistevent)
-// 	if err != nil {
-// 		utils.RespondWithError(w, http.StatusInternalServerError, "Database error")
-// 		return
-// 	}
-
-// 	tokenString := r.Header.Get("Authorization")
-// 	claims, err := middleware.ValidateJWT(tokenString)
-// 	if err != nil {
-// 		log.Printf("JWT validation error: %v", err) // Log the error for debugging
-// 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-// 		return
-// 	}
-
-// 	artistevent.CreatorID = claims.UserID
-// 	addEventToDB(artistevent)
-
-// 	utils.RespondWithJSON(w, http.StatusCreated, map[string]interface{}{
-// 		"message": "ArtistEvent created successfully",
-// 		"id":      insertResult.InsertedID,
-// 	})
-// }
 
 // Update Artist Event
 func UpdateArtistEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -197,46 +144,6 @@ func addEventToDB(ctx context.Context, artistEvent models.ArtistEvent) (string, 
 
 	return "", err
 }
-
-// func addEventToDB(artistEvent models.ArtistEvent) (string, error) {
-// 	var event models.Event
-
-// 	// dateString := "2025-04-29 10:00:00"
-// 	// layout := "2006-01-02 15:04:05" // Format string must match the input string
-
-// 	dateString := artistEvent.Date
-// 	layout := "2006-01-02"
-
-// 	dateToSave, _ := time.Parse(layout, dateString)
-
-// 	// event.CreatorID = artistEvent.ArtistID
-// 	event.CreatorID = artistEvent.CreatorID
-// 	event.CreatedAt = time.Now().UTC() // ✅ Ensure UTC timestamp
-// 	event.Date = dateToSave.UTC()      // ✅ Force UTC before saving
-// 	event.Status = "active"
-// 	event.FAQs = []models.FAQ{}
-// 	event.EventID = artistEvent.EventID
-// 	event.Artists = []string{artistEvent.ArtistID}
-// 	event.Title = artistEvent.Title
-// 	event.Location = artistEvent.Venue
-// 	event.Published = "draft"
-// 	event.Category = "concert"
-
-// 	// Insert the event into MongoDB
-// 	result, err := db.EventsCollection.InsertOne(context.TODO(), event)
-// 	if err != nil || result.InsertedID == nil {
-// 		log.Printf("Error inserting event into MongoDB: %v", err)
-// 		return "", err
-// 	}
-
-// 	userdata.SetUserData("event", event.EventID, artistEvent.ArtistID, "", "")
-
-// 	// ✅ Emit event for messaging queue (if needed)
-// 	go mq.Emit("event-created", models.Index{
-// 		EntityType: "event", EntityId: event.EventID, Method: "POST",
-// 	})
-// 	return "", err
-// }
 
 func AddArtistToEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	type RequestPayload struct {

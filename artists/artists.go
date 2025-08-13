@@ -39,6 +39,10 @@ func GetAllArtists(w http.ResponseWriter, r *http.Request, _ httprouter.Params) 
 		return
 	}
 
+	if len(artists) == 0 {
+		artists = []models.Artist{}
+	}
+
 	utils.RespondWithJSON(w, http.StatusOK, artists)
 }
 
@@ -70,6 +74,10 @@ func GetArtistsByEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 	if err := cursor.All(ctx, &artists); err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, "Error decoding artists")
 		return
+	}
+
+	if len(artists) == 0 {
+		artists = []models.Artist{}
 	}
 
 	utils.RespondWithJSON(w, http.StatusOK, artists)
