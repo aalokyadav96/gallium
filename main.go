@@ -10,7 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"naevis/newchat"
 	"naevis/ratelim"
 	"naevis/routes"
 
@@ -69,8 +68,8 @@ func setupRouter(rateLimiter *ratelim.RateLimiter) *httprouter.Router {
 	routes.AddAuthRoutes(router, rateLimiter)
 	routes.AddCartRoutes(router, rateLimiter)
 	// chat routes are added in main
-	routes.AddCommentsRoutes(router, rateLimiter)
 	routes.AddDiscordRoutes(router, rateLimiter)
+	routes.AddCommentsRoutes(router, rateLimiter)
 	routes.AddEventsRoutes(router, rateLimiter)
 	routes.RegisterFarmRoutes(router, rateLimiter)
 	routes.AddFeedRoutes(router, rateLimiter)
@@ -80,12 +79,12 @@ func setupRouter(rateLimiter *ratelim.RateLimiter) *httprouter.Router {
 	routes.AddMediaRoutes(router, rateLimiter)
 	routes.AddMerchRoutes(router, rateLimiter)
 	routes.AddBannerRoutes(router, rateLimiter)
+	routes.AddPayRoutes(router, rateLimiter)
 	routes.AddPlaceRoutes(router, rateLimiter)
 	routes.AddPlaceTabRoutes(router, rateLimiter)
 	routes.AddPostRoutes(router, rateLimiter)
 	routes.AddProductRoutes(router, rateLimiter)
 	routes.AddProfileRoutes(router, rateLimiter)
-	routes.AddQnARoutes(router, rateLimiter)
 	routes.AddRecipeRoutes(router, rateLimiter)
 	routes.AddReportRoutes(router, rateLimiter)
 	routes.AddReviewsRoutes(router, rateLimiter)
@@ -95,6 +94,7 @@ func setupRouter(rateLimiter *ratelim.RateLimiter) *httprouter.Router {
 	routes.AddSuggestionsRoutes(router, rateLimiter)
 	routes.AddTicketRoutes(router, rateLimiter)
 	routes.AddUtilityRoutes(router, rateLimiter)
+	routes.AddMiscRoutes(router, rateLimiter)
 
 	return router
 }
@@ -114,21 +114,15 @@ func main() {
 	}
 
 	// initialize rate limiter
-	rateLimiter := ratelim.NewRateLimiter(1, 3, 10*time.Minute, 10000)
-
-	// initialize chat hub
-	hub := newchat.NewHub()
-	go hub.Run()
+	rateLimiter := ratelim.NewRateLimiter(1, 6, 10*time.Minute, 10000)
 
 	// build router and add chat routes with hub
 	router := setupRouter(rateLimiter)
-	routes.AddChatRoutes(router, rateLimiter)
-	routes.AddNewChatRoutes(router, hub, rateLimiter)
 
 	// apply middleware: CORS → security headers → logging → router
 	corsHandler := cors.New(cors.Options{
 		AllowedOrigins:   []string{"*"}, // lock down in production
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedMethods:   []string{"HEAD", "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Content-Type", "Authorization"},
 		AllowCredentials: true,
 	}).Handler(router)
@@ -150,8 +144,7 @@ func main() {
 
 	// on shutdown: stop chat hub, cleanup
 	server.RegisterOnShutdown(func() {
-		log.Println("🛑 Shutting down chat hub...")
-		hub.Stop()
+		log.Println("🛑 Shutting down...")
 	})
 
 	// start server

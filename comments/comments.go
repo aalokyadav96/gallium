@@ -3,8 +3,8 @@ package comments
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
@@ -17,8 +17,11 @@ import (
 	"naevis/utils"
 )
 
+// CreateComment adds a new comment
 func CreateComment(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	log.Println("ok")
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
 	entityType := ps.ByName("entitytype")
 	entityID := ps.ByName("entityid")
 
@@ -26,15 +29,19 @@ func CreateComment(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 		Content string `json:"content"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid JSON")
+		return
+	}
+
+	if strings.TrimSpace(body.Content) == "" {
+		utils.RespondWithError(w, http.StatusBadRequest, "Comment cannot be empty")
 		return
 	}
 
 	tokenString := r.Header.Get("Authorization")
 	claims, err := middleware.ValidateJWT(tokenString)
 	if err != nil {
-		log.Printf("JWT validation error: %v", err) // Log the error for debugging
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		utils.RespondWithError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
@@ -47,113 +54,74 @@ func CreateComment(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 		UpdatedAt:  time.Now(),
 	}
 
-	res, err := db.CommentsCollection.InsertOne(context.TODO(), comment)
+	res, err := db.CommentsCollection.InsertOne(ctx, comment)
 	if err != nil {
-		http.Error(w, "DB insert failed", http.StatusInternalServerError)
+		utils.RespondWithError(w, http.StatusInternalServerError, "DB insert failed")
 		return
 	}
 	comment.ID = res.InsertedID.(primitive.ObjectID).Hex()
 
-	utils.RespondWithJSON(w, http.StatusOK, comment)
+	utils.RespondWithJSON(w, http.StatusCreated, comment)
 }
 
-// Comments
-func GetComments(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+// GetComment fetches a single comment by ID
+func GetComment(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	filter := bson.M{
-		"entity_type": ps.ByName("entitytype"),
-		"entity_id":   ps.ByName("entityid"),
-	}
-	comments, err := utils.FindAndDecode[models.Comment](ctx, db.CommentsCollection, filter)
+	commentID := ps.ByName("commentid") // Correctly get the comment ID
+	objID, err := primitive.ObjectIDFromHex(commentID)
 	if err != nil {
-		utils.Error(w, http.StatusInternalServerError, "Failed to fetch comments")
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid ID")
 		return
 	}
-
-	utils.JSON(w, http.StatusOK, comments)
-}
-
-// func GetComments(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-// 	entityType := ps.ByName("entitytype")
-// 	entityID := ps.ByName("entityid")
-
-// 	filter := bson.M{"entity_type": entityType, "entity_id": entityID}
-// 	cursor, err := db.CommentsCollection.Find(context.TODO(), filter)
-// 	if err != nil {
-// 		http.Error(w, "DB find failed", http.StatusInternalServerError)
-// 		return
-// 	}
-// 	defer cursor.Close(context.TODO())
-
-// 	var comments []models.Comment
-// 	if err := cursor.All(context.TODO(), &comments); err != nil {
-// 		http.Error(w, "Cursor decode failed", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	if len(comments) == 0 {
-// 		comments = []models.Comment{}
-// 	}
-
-// 	utils.RespondWithJSON(w, http.StatusOK, comments)
-// }
-
-func GetComment(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	commentID := ps.ByName("entitytype")
-
-	filter := bson.M{"_id": commentID}
-	cursor, err := db.CommentsCollection.Find(context.TODO(), filter)
-	if err != nil {
-		http.Error(w, "DB find failed", http.StatusInternalServerError)
-		return
-	}
-	defer cursor.Close(context.TODO())
 
 	var comment models.Comment
-	if err := cursor.All(context.TODO(), &comment); err != nil {
-		http.Error(w, "Cursor decode failed", http.StatusInternalServerError)
+	err = db.CommentsCollection.FindOne(ctx, bson.M{"_id": objID}).Decode(&comment)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusNotFound, "Comment not found")
 		return
 	}
 
 	utils.RespondWithJSON(w, http.StatusOK, comment)
 }
 
+// UpdateComment edits a comment
 func UpdateComment(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
 	commentID := ps.ByName("commentid")
+	objID, err := primitive.ObjectIDFromHex(commentID)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid ID")
+		return
+	}
 
 	var body struct {
 		Content string `json:"content"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		return
-	}
-
-	objID, err := primitive.ObjectIDFromHex(commentID)
-	if err != nil {
-		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid JSON")
 		return
 	}
 
 	tokenString := r.Header.Get("Authorization")
 	claims, err := middleware.ValidateJWT(tokenString)
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		utils.RespondWithError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
-	// Check if comment exists and belongs to user
+	// Ensure user owns the comment
 	var existing models.Comment
-	err = db.CommentsCollection.FindOne(context.TODO(), bson.M{"_id": objID}).Decode(&existing)
+	err = db.CommentsCollection.FindOne(ctx, bson.M{"_id": objID}).Decode(&existing)
 	if err != nil {
-		http.Error(w, "Comment not found", http.StatusNotFound)
+		utils.RespondWithError(w, http.StatusNotFound, "Comment not found")
 		return
 	}
-
 	if existing.CreatedBy != claims.UserID {
-		http.Error(w, "Forbidden", http.StatusForbidden)
+		utils.RespondWithError(w, http.StatusForbidden, "Forbidden")
 		return
 	}
 
@@ -164,52 +132,56 @@ func UpdateComment(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 		},
 	}
 
-	_, err = db.CommentsCollection.UpdateByID(context.TODO(), objID, update)
+	_, err = db.CommentsCollection.UpdateByID(ctx, objID, update)
 	if err != nil {
-		http.Error(w, "DB update failed", http.StatusInternalServerError)
+		utils.RespondWithError(w, http.StatusInternalServerError, "DB update failed")
 		return
 	}
 
-	var updated models.Comment
-	if err := db.CommentsCollection.FindOne(context.TODO(), bson.M{"_id": objID}).Decode(&updated); err != nil {
-		http.Error(w, "Fetch failed", http.StatusInternalServerError)
+	// Return updated comment
+	err = db.CommentsCollection.FindOne(ctx, bson.M{"_id": objID}).Decode(&existing)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Fetch failed")
 		return
 	}
 
-	utils.RespondWithJSON(w, http.StatusOK, updated)
+	utils.RespondWithJSON(w, http.StatusOK, existing)
 }
 
+// DeleteComment removes a comment
 func DeleteComment(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	commentID := ps.ByName("commentid")
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
 
+	commentID := ps.ByName("commentid")
 	objID, err := primitive.ObjectIDFromHex(commentID)
 	if err != nil {
-		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid ID")
 		return
 	}
 
 	tokenString := r.Header.Get("Authorization")
 	claims, err := middleware.ValidateJWT(tokenString)
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		utils.RespondWithError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
 	var existing models.Comment
-	err = db.CommentsCollection.FindOne(context.TODO(), bson.M{"_id": objID}).Decode(&existing)
+	err = db.CommentsCollection.FindOne(ctx, bson.M{"_id": objID}).Decode(&existing)
 	if err != nil {
-		http.Error(w, "Comment not found", http.StatusNotFound)
+		utils.RespondWithError(w, http.StatusNotFound, "Comment not found")
 		return
 	}
 
 	if existing.CreatedBy != claims.UserID {
-		http.Error(w, "Forbidden", http.StatusForbidden)
+		utils.RespondWithError(w, http.StatusForbidden, "Forbidden")
 		return
 	}
 
-	_, err = db.CommentsCollection.DeleteOne(context.TODO(), bson.M{"_id": objID})
+	_, err = db.CommentsCollection.DeleteOne(ctx, bson.M{"_id": objID})
 	if err != nil {
-		http.Error(w, "Delete failed", http.StatusInternalServerError)
+		utils.RespondWithError(w, http.StatusInternalServerError, "Delete failed")
 		return
 	}
 

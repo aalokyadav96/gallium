@@ -3,21 +3,13 @@ package utils
 import (
 	"crypto/md5"
 	"fmt"
-	"image"
-	"image/color"
-	"log"
-	"math"
 	rndm "math/rand"
 	"mime/multipart"
 	"net/http"
 	"os"
-	"path/filepath"
 	"slices"
+	"strings"
 
-	"naevis/models"
-	"naevis/mq"
-
-	"github.com/disintegration/imaging"
 	"github.com/julienschmidt/httprouter"
 )
 
@@ -74,18 +66,6 @@ func SendResponse(w http.ResponseWriter, status int, data any, message string, e
 	RespondWithJSON(w, status, resp)
 }
 
-// func RespondWithJSON(w http.ResponseWriter, status int, data any) {
-// 	w.Header().Set("Content-Type", "application/json")
-// 	w.WriteHeader(status)
-// 	if err := json.NewEncoder(w).Encode(data); err != nil {
-// 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-// 	}
-// }
-
-func SendJSONResponse(w http.ResponseWriter, status int, response any) {
-	RespondWithJSON(w, status, response)
-}
-
 // --- Slice Helpers ---
 
 func Contains(slice []string, value string) bool {
@@ -112,60 +92,83 @@ func ValidateImageFileType(w http.ResponseWriter, header *multipart.FileHeader) 
 	return true
 }
 
-// --- Thumbnail Creation ---
+// // --- Thumbnail Creation ---
 
-func CreateThumb(filename, fileLocation, fileType string, thumbWidth, thumbHeight int) error {
-	inputPath := filepath.Join(fileLocation, filename+fileType)
-	outputDir := filepath.Join(fileLocation, "thumb")
-	outputPath := filepath.Join(outputDir, filename+fileType)
+// func CreateThumb(filename, fileLocation, fileType string, thumbWidth, thumbHeight int) error {
+// 	inputPath := filepath.Join(fileLocation, filename+fileType)
+// 	outputDir := filepath.Join(fileLocation, "thumb")
+// 	outputPath := filepath.Join(outputDir, filename+fileType)
 
-	// Ensure output directory exists
-	if err := ensureDir(outputDir); err != nil {
-		log.Printf("failed to create thumbnail directory: %v", err)
-		return err
-	}
+// 	// Ensure output directory exists
+// 	if err := ensureDir(outputDir); err != nil {
+// 		log.Printf("failed to create thumbnail directory: %v", err)
+// 		return err
+// 	}
 
-	bgColor := color.Transparent
+// 	bgColor := color.Transparent
 
-	img, err := imaging.Open(inputPath)
-	if err != nil {
-		log.Printf("failed to open input image: %v", err)
-		return err
-	}
+// 	img, err := imaging.Open(inputPath)
+// 	if err != nil {
+// 		log.Printf("failed to open input image: %v", err)
+// 		return err
+// 	}
 
-	newWidth, newHeight := fitResolution(img.Bounds().Dx(), img.Bounds().Dy(), thumbWidth, thumbHeight)
-	resizedImg := imaging.Resize(img, newWidth, newHeight, imaging.Lanczos)
+// 	newWidth, newHeight := fitResolution(img.Bounds().Dx(), img.Bounds().Dy(), thumbWidth, thumbHeight)
+// 	resizedImg := imaging.Resize(img, newWidth, newHeight, imaging.Lanczos)
 
-	thumbImg := imaging.New(thumbWidth, thumbHeight, bgColor)
-	xPos := (thumbWidth - newWidth) / 2
-	yPos := (thumbHeight - newHeight) / 2
-	thumbImg = imaging.Paste(thumbImg, resizedImg, image.Pt(xPos, yPos))
+// 	thumbImg := imaging.New(thumbWidth, thumbHeight, bgColor)
+// 	xPos := (thumbWidth - newWidth) / 2
+// 	yPos := (thumbHeight - newHeight) / 2
+// 	thumbImg = imaging.Paste(thumbImg, resizedImg, image.Pt(xPos, yPos))
 
-	if err := imaging.Save(thumbImg, outputPath); err != nil {
-		log.Printf("failed to save thumbnail: %v", err)
-		return err
-	}
+// 	if err := imaging.Save(thumbImg, outputPath); err != nil {
+// 		log.Printf("failed to save thumbnail: %v", err)
+// 		return err
+// 	}
 
-	// Notify via MQ
-	mq.Notify("thumbnail-created", models.Index{})
+// 	// Notify via MQ
+// 	mq.Notify("thumbnail-created", models.Index{})
 
-	return nil
-}
+// 	return nil
+// }
 
-func fitResolution(origWidth, origHeight, maxWidth, maxHeight int) (int, int) {
-	if origWidth <= maxWidth && origHeight <= maxHeight {
-		return origWidth, origHeight
-	}
+// func fitResolution(origWidth, origHeight, maxWidth, maxHeight int) (int, int) {
+// 	if origWidth <= maxWidth && origHeight <= maxHeight {
+// 		return origWidth, origHeight
+// 	}
 
-	widthRatio := float64(maxWidth) / float64(origWidth)
-	heightRatio := float64(maxHeight) / float64(origHeight)
-	scaleFactor := math.Min(widthRatio, heightRatio)
+// 	widthRatio := float64(maxWidth) / float64(origWidth)
+// 	heightRatio := float64(maxHeight) / float64(origHeight)
+// 	scaleFactor := math.Min(widthRatio, heightRatio)
 
-	return int(float64(origWidth) * scaleFactor), int(float64(origHeight) * scaleFactor)
-}
+// 	return int(float64(origWidth) * scaleFactor), int(float64(origHeight) * scaleFactor)
+// }
 
-// --- Directory Helper ---
+// // --- Directory Helper ---
 
-func ensureDir(dir string) error {
+func EnsureDir(dir string) error {
 	return os.MkdirAll(dir, 0755)
+}
+
+// SplitTags takes a comma-separated string and returns a cleaned []string
+func SplitTags(input string) []string {
+	if input == "" {
+		return []string{}
+	}
+	parts := strings.Split(input, ",")
+	var tags []string
+	seen := make(map[string]bool)
+
+	for _, p := range parts {
+		tag := strings.TrimSpace(p)
+		if tag == "" {
+			continue
+		}
+		tag = strings.ToLower(tag) // normalize
+		if !seen[tag] {
+			tags = append(tags, tag)
+			seen[tag] = true
+		}
+	}
+	return tags
 }

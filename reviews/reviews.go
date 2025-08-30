@@ -37,11 +37,11 @@ func GetReviews(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 	reviews, err := utils.FindAndDecode[models.Review](ctx, db.ReviewsCollection, filter, opts)
 	if err != nil {
-		utils.Error(w, http.StatusInternalServerError, "Failed to retrieve reviews")
+		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to retrieve reviews")
 		return
 	}
 
-	utils.JSON(w, http.StatusOK, map[string]any{"status": http.StatusOK, "ok": true, "reviews": reviews})
+	utils.RespondWithJSON(w, http.StatusOK, map[string]any{"status": http.StatusOK, "ok": true, "reviews": reviews})
 }
 
 // // GET /api/reviews/:entityType/:entityId

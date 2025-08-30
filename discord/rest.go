@@ -3,6 +3,7 @@ package discord
 
 import (
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"strings"
 	"time"
@@ -32,26 +33,43 @@ func UploadAttachment(w http.ResponseWriter, r *http.Request, ps httprouter.Para
 		return
 	}
 
-	contentType := ""
+	var header *multipart.FileHeader
 	if r.MultipartForm != nil && r.MultipartForm.File != nil {
 		files := r.MultipartForm.File["file"]
 		if len(files) > 0 {
-			contentType = files[0].Header.Get("Content-Type")
+			header = files[0]
 		}
 	}
+	if header == nil {
+		writeErr(w, "no file provided", http.StatusBadRequest)
+		return
+	}
 
-	if !strings.HasPrefix(contentType, "image/") && !strings.HasPrefix(contentType, "application/") {
+	contentType := header.Header.Get("Content-Type")
+
+	// ✅ Map content type to correct PictureType
+	var picType filemgr.PictureType
+	switch {
+	case strings.HasPrefix(contentType, "image/"):
+		picType = filemgr.PicPhoto
+	case strings.HasPrefix(contentType, "video/"):
+		picType = filemgr.PicVideo
+	case strings.HasPrefix(contentType, "application/"):
+		picType = filemgr.PicFile
+	default:
 		writeErr(w, "unsupported file type", http.StatusBadRequest)
 		return
 	}
 
-	savedPath, err := filemgr.SaveFormFile(r.MultipartForm, "file", filemgr.EntityChat, filemgr.PicFile, false)
+	// ✅ Save file using filemgr
+	savedName, err := filemgr.SaveFormFile(r.MultipartForm, "file", filemgr.EntityChat, picType, false)
 	if err != nil {
 		writeErr(w, "cannot save file", http.StatusInternalServerError)
 		return
 	}
 
-	msg, err := persistMediaMessage(chatID, user, savedPath, contentType)
+	// ✅ Persist message (keeps contentType + saved filename)
+	msg, err := persistMediaMessage(chatID, user, savedName, contentType)
 	if err != nil {
 		writeErr(w, "failed to persist message", http.StatusInternalServerError)
 		return
@@ -60,105 +78,6 @@ func UploadAttachment(w http.ResponseWriter, r *http.Request, ps httprouter.Para
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(msg)
 }
-
-// func UploadAttachment(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-// 	user := utils.GetUserIDFromRequest(r)
-// 	chatIDHex := ps.ByName("chatId")
-// 	chatID, err := primitive.ObjectIDFromHex(chatIDHex)
-// 	if err != nil {
-// 		writeErr(w, "invalid chatId", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	file, header, err := r.FormFile("file")
-// 	if err != nil {
-// 		writeErr(w, "failed to read file", http.StatusBadRequest)
-// 		return
-// 	}
-// 	defer file.Close()
-
-// 	contentType := header.Header.Get("Content-Type")
-// 	if !strings.HasPrefix(contentType, "image/") && !strings.HasPrefix(contentType, "application/") {
-// 		writeErr(w, "unsupported file type", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	// Save using filemgr
-// 	uploadDir := "static/uploads/farmchat"
-// 	fileName, err := filemgr.SaveFile(file, header, uploadDir)
-// 	if err != nil {
-// 		writeErr(w, "cannot save file", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	// Persist the media message
-// 	msg, err := persistMediaMessage(chatID, user, fileName, contentType)
-// 	if err != nil {
-// 		writeErr(w, "failed to persist message", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(msg)
-// }
-
-// // func UploadAttachment(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-// // 	user := utils.GetUserIDFromRequest(r)
-// // 	chatIDHex := ps.ByName("chatId")
-// // 	chatID, err := primitive.ObjectIDFromHex(chatIDHex)
-// // 	if err != nil {
-// // 		writeErr(w, "invalid chatId", http.StatusBadRequest)
-// // 		return
-// // 	}
-
-// // 	file, header, err := r.FormFile("file")
-// // 	if err != nil {
-// // 		writeErr(w, "failed to read file", http.StatusBadRequest)
-// // 		return
-// // 	}
-// // 	defer file.Close()
-
-// // 	contentType := header.Header.Get("Content-Type")
-// // 	if !strings.HasPrefix(contentType, "image/") && !strings.HasPrefix(contentType, "application/") {
-// // 		writeErr(w, "unsupported file type", http.StatusBadRequest)
-// // 		return
-// // 	}
-
-// // 	uploadDir := "static/uploads/farmchat"
-// // 	if err := os.MkdirAll(uploadDir, os.ModePerm); err != nil {
-// // 		writeErr(w, "cannot create upload dir", http.StatusInternalServerError)
-// // 		return
-// // 	}
-
-// // 	ext := filepath.Ext(header.Filename)
-// // 	fname := fmt.Sprintf("%s%s", uuid.New().String(), ext)
-// // 	destPath := filepath.Join(uploadDir, fname)
-
-// // 	out, err := os.Create(destPath)
-// // 	if err != nil {
-// // 		writeErr(w, "cannot save file", http.StatusInternalServerError)
-// // 		return
-// // 	}
-// // 	defer out.Close()
-
-// // 	if _, err := io.Copy(out, file); err != nil {
-// // 		writeErr(w, "error writing file", http.StatusInternalServerError)
-// // 		return
-// // 	}
-
-// // 	// url := fmt.Sprintf("/static/uploads/farmchat/%s", fname)
-
-// // 	// Save as media message (empty text, media attached)
-// // 	// msg, err := persistMessage(chatID, user, "", fname, contentType)
-// // 	msg, err := persistMediaMessage(chatID, user, fname, contentType)
-// // 	if err != nil {
-// // 		writeErr(w, "failed to persist message", http.StatusInternalServerError)
-// // 		return
-// // 	}
-
-// // 	w.Header().Set("Content-Type", "application/json")
-// // 	json.NewEncoder(w).Encode(msg)
-// // }
 
 func GetUserChats(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	user := utils.GetUserIDFromRequest(r)
@@ -301,6 +220,7 @@ func GetChatMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 	json.NewEncoder(w).Encode(msgs)
 }
 
+// SendMessageREST (updated)
 func SendMessageREST(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	chatID, err := primitive.ObjectIDFromHex(ps.ByName("chatId"))
 	if err != nil {
@@ -308,7 +228,10 @@ func SendMessageREST(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 		return
 	}
 
-	var body struct{ Content string }
+	var body struct {
+		Content  string `json:"content"`
+		ClientID string `json:"clientId,omitempty"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid body", http.StatusBadRequest)
 		return
@@ -321,8 +244,20 @@ func SendMessageREST(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 		return
 	}
 
+	// Build response payload that includes clientId so the client can reconcile
+	resp := map[string]interface{}{
+		"id":        msg.ID.Hex(),
+		"sender":    msg.Sender,
+		"content":   msg.Content,
+		"createdAt": msg.CreatedAt,
+		"media":     msg.Media,
+	}
+	if body.ClientID != "" {
+		resp["clientId"] = body.ClientID
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(msg)
+	json.NewEncoder(w).Encode(resp)
 }
 
 func EditMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {

@@ -18,25 +18,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
-// Artist Events
-func GetArtistEvents(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	filter := bson.M{"artistid": ps.ByName("id")}
-	artistevents, err := utils.FindAndDecode[models.ArtistEvent](ctx, db.ArtistEventsCollection, filter)
-	if err != nil {
-		utils.Error(w, http.StatusInternalServerError, "Failed to fetch artist events")
-		return
-	}
-
-	if len(artistevents) == 0 {
-		artistevents = []models.ArtistEvent{}
-	}
-
-	utils.JSON(w, http.StatusOK, artistevents)
-}
-
 func CreateArtistEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	ctx := r.Context()
 

@@ -421,10 +421,20 @@ func ConvertToEntity(ctx context.Context, data interface{}) (Entity, error) {
 		return Entity{EntityID: v.PlaceID, EntityType: "places", Title: v.Name, Image: v.Image, Description: v.Description, CreatedAt: parseTime(v.CreatedAt)}, nil
 	case models.BlogPost:
 		var img string
-		if len(v.ImagePaths) > 0 {
-			img = v.ImagePaths[0]
+		var desc string
+		for _, b := range v.Blocks {
+			if b.Type == "image" && b.URL != "" {
+				img = b.URL
+				break
+			}
 		}
-		return Entity{EntityID: v.PostID, EntityType: "blogposts", Title: v.Title, Image: img, Description: v.Content, CreatedAt: parseTime(v.CreatedAt)}, nil
+		for _, b := range v.Blocks {
+			if b.Type == "text" && b.Content != "" {
+				desc = b.Content
+				break
+			}
+		}
+		return Entity{EntityID: v.PostID, EntityType: "blogposts", Title: v.Title, Image: img, Description: desc, CreatedAt: parseTime(v.CreatedAt)}, nil
 	case models.Merch:
 		return Entity{EntityID: v.MerchID, EntityType: "merch", Title: v.Name, Image: v.MerchPhoto, Description: v.Category, CreatedAt: parseTime(v.CreatedAt)}, nil
 	case models.FeedPost:
@@ -434,7 +444,7 @@ func ConvertToEntity(ctx context.Context, data interface{}) (Entity, error) {
 		}
 		return Entity{EntityID: v.PostID, EntityType: "feedposts", Title: v.Text, Image: img, Description: v.Content, CreatedAt: parseTime(v.CreatedAt)}, nil
 	case models.Farm:
-		return Entity{EntityID: v.FarmID, EntityType: "farms", Title: v.Name, Image: v.Photo, Description: v.Description, CreatedAt: parseTime(v.CreatedAt)}, nil
+		return Entity{EntityID: v.FarmID, EntityType: "farms", Title: v.Name, Image: v.Banner, Description: v.Description, CreatedAt: parseTime(v.CreatedAt)}, nil
 	case models.Baito:
 		return Entity{EntityID: v.BaitoId, EntityType: "baitos", Title: v.Title, Image: v.BannerURL, Description: v.Description, CreatedAt: parseTime(v.CreatedAt)}, nil
 	case Entity:

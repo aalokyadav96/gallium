@@ -167,14 +167,6 @@ func RespondWithError(w http.ResponseWriter, code int, msg string) {
 
 type M map[string]interface{}
 
-func JSON(w http.ResponseWriter, status int, data interface{}) {
-	RespondWithJSON(w, status, data)
-}
-
-func Error(w http.ResponseWriter, status int, msg string) {
-	JSON(w, status, map[string]string{"error": msg})
-}
-
 func ToJSON(v interface{}) []byte {
 	data, _ := json.Marshal(v)
 	return data

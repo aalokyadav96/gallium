@@ -18,8 +18,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
-// var menuUploadPath string = "./static/menupic"
-
 func CreateMenu(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	ctx := r.Context()
 	placeID := ps.ByName("placeid")
@@ -35,8 +33,8 @@ func CreateMenu(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 
 	name := r.FormValue("name")
 	price, err := strconv.ParseFloat(r.FormValue("price"), 64)
-	if err != nil || price <= 0 {
-		http.Error(w, "Invalid price value. Must be a positive number.", http.StatusBadRequest)
+	if err != nil || price < 0 {
+		http.Error(w, "Invalid price value. Must be a non-negative number.", http.StatusBadRequest)
 		return
 	}
 
@@ -94,188 +92,6 @@ func CreateMenu(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	})
 }
 
-// func CreateMenu(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-// 	placeID := ps.ByName("placeid")
-// 	if placeID == "" {
-// 		http.Error(w, "Place ID is required", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	err := r.ParseMultipartForm(10 << 20)
-// 	if err != nil {
-// 		http.Error(w, "Unable to parse form: "+err.Error(), http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	name := r.FormValue("name")
-// 	price, err := strconv.ParseFloat(r.FormValue("price"), 64)
-// 	if err != nil || price <= 0 {
-// 		http.Error(w, "Invalid price value. Must be a positive number.", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	stock, err := strconv.Atoi(r.FormValue("stock"))
-// 	if err != nil || stock < 0 {
-// 		http.Error(w, "Invalid stock value. Must be a non-negative integer.", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	if len(name) == 0 || len(name) > 100 {
-// 		http.Error(w, "Name must be between 1 and 100 characters.", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	menuID := utils.GenerateID(14)
-// 	uploadPath := menuUploadPath
-
-// 	// ⬇️ Refactored image + thumbnail handling
-// 	imageName, thumbName, err := filemgr.SaveImageWithThumb(r, "image", uploadPath, 150, false)
-// 	if err != nil {
-// 		http.Error(w, "Image upload failed: "+err.Error(), http.StatusBadRequest)
-// 		return
-// 	}
-// 	_ = thumbName
-
-// 	menu := models.Menu{
-// 		PlaceID:   placeID,
-// 		Name:      name,
-// 		Price:     price,
-// 		Stock:     stock,
-// 		MenuID:    menuID,
-// 		MenuPhoto: imageName,
-// 		CreatedAt: time.Now(),
-// 		UpdatedAt: time.Now(),
-// 	}
-
-// 	_, err = db.MenuCollection.InsertOne(context.TODO(), menu)
-// 	if err != nil {
-// 		http.Error(w, "Failed to insert menu: "+err.Error(), http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	m := models.Index{EntityType: "menu", EntityId: menu.MenuID, Method: "POST", ItemType: "place", ItemId: placeID}
-// 	go mq.Emit(ctx, "menu-created", m)
-
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(map[string]any{
-// 		"ok":      true,
-// 		"message": "Menu created successfully.",
-// 		"data":    menu,
-// 	})
-// }
-
-// var menuUploadPath string = "./static/menupic"
-
-// // Function to handle the creation of menu
-// func CreateMenu(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-// 	placeID := ps.ByName("placeid")
-// 	if placeID == "" {
-// 		http.Error(w, "Place ID is required", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	// Parse the multipart form data (with a 10MB limit)
-// 	err := r.ParseMultipartForm(10 << 20) // Limit the size to 10 MB
-// 	if err != nil {
-// 		http.Error(w, "Unable to parse form: "+err.Error(), http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	// Retrieve form values
-// 	name := r.FormValue("name")
-// 	price, err := strconv.ParseFloat(r.FormValue("price"), 64)
-// 	if err != nil || price <= 0 {
-// 		http.Error(w, "Invalid price value. Must be a positive number.", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	stock, err := strconv.Atoi(r.FormValue("stock"))
-// 	if err != nil || stock < 0 {
-// 		http.Error(w, "Invalid stock value. Must be a non-negative integer.", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	// Validate menu data
-// 	if len(name) == 0 || len(name) > 100 {
-// 		http.Error(w, "Name must be between 1 and 100 characters.", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	// Create a new Menu instance
-// 	menu := models.Menu{
-// 		PlaceID:   placeID,
-// 		Name:      name,
-// 		Price:     price,
-// 		Stock:     stock,
-// 		MenuID:    utils.GenerateID(14), // Generate unique menu ID
-// 		CreatedAt: time.Now(),
-// 		UpdatedAt: time.Now(),
-// 	}
-
-// 	// Handle banner file upload
-// 	bannerFile, bannerHeader, err := r.FormFile("image")
-// 	if err != nil && err != http.ErrMissingFile {
-// 		http.Error(w, "Error retrieving banner file: "+err.Error(), http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	if bannerFile != nil {
-// 		defer bannerFile.Close()
-
-// 		// Validate file type using MIME type
-// 		mimeType := bannerHeader.Header.Get("Content-Type")
-// 		fileExtension := ""
-// 		switch mimeType {
-// 		case "image/jpeg":
-// 			fileExtension = ".jpg"
-// 		case "image/webp":
-// 			fileExtension = ".webp"
-// 		case "image/png":
-// 			fileExtension = ".png"
-// 		default:
-// 			http.Error(w, "Unsupported image type. Only JPG, PNG and WEBP are allowed.", http.StatusUnsupportedMediaType)
-// 			return
-// 		}
-
-// 		// Save the banner file securely
-// 		savePath := menuUploadPath + "/" + menu.MenuID + fileExtension
-// 		out, err := os.Create(savePath)
-// 		if err != nil {
-// 			http.Error(w, "Error saving banner: "+err.Error(), http.StatusInternalServerError)
-// 			return
-// 		}
-// 		defer out.Close()
-
-// 		if _, err := io.Copy(out, bannerFile); err != nil {
-// 			http.Error(w, "Error saving banner: "+err.Error(), http.StatusInternalServerError)
-// 			return
-// 		}
-
-// 		utils.CreateThumb(menu.MenuID, menuUploadPath, ".jpg", 150, 200)
-// 		// Set the banner photo URL
-// 		menu.MenuPhoto = menu.MenuID + fileExtension
-// 	}
-
-// 	// Insert menu into MongoDB
-// 	// collection := client.Database("placedb").Collection("menu")
-// 	_, err = db.MenuCollection.InsertOne(context.TODO(), menu)
-// 	if err != nil {
-// 		http.Error(w, "Failed to insert menu: "+err.Error(), http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	m := models.Index{EntityType: "menu", EntityId: menu.MenuID, Method: "POST", ItemType: "place", ItemId: placeID}
-// 	go mq.Emit(ctx, "menu-created", m)
-
-// 	// Respond with the created menu
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(map[string]any{
-// 		"ok":      true,
-// 		"message": "Menu created successfully.",
-// 		"data":    menu,
-// 	})
-// }
-
 // Fetch a single menu item
 func GetMenu(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	placeID := ps.ByName("placeid")
@@ -316,63 +132,15 @@ func GetMenus(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	filter := bson.M{"placeid": ps.ByName("placeid")}
 	menus, err := utils.FindAndDecode[models.Menu](ctx, db.MenuCollection, filter)
 	if err != nil {
-		utils.Error(w, http.StatusInternalServerError, "Failed to fetch menus")
+		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to fetch menus")
 		return
 	}
-	utils.JSON(w, http.StatusOK, menus)
+	if len(menus) == 0 {
+		menus = []models.Menu{}
+	}
+
+	utils.RespondWithJSON(w, http.StatusOK, menus)
 }
-
-// // Fetch a list of menu items
-// func GetMenus(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-// 	placeID := ps.ByName("placeid")
-// 	// cacheKey := fmt.Sprintf("menulist:%s", placeID)
-// 	fmt.Println("::::------------------------------::", placeID)
-// 	// // Check if the menu list is cached
-// 	// cachedMenus, err := rdx.RdxGet(cacheKey)
-// 	// if err == nil && cachedMenus != "" {
-// 	// 	// Return cached list
-// 	// 	w.Header().Set("Content-Type", "application/json")
-// 	// 	w.Write([]byte(cachedMenus))
-// 	// 	return
-// 	// }
-
-// 	// collection := client.Database("placedb").Collection("menu")
-// 	var menuList []models.Menu
-// 	filter := bson.M{"placeid": placeID}
-
-// 	cursor, err := db.MenuCollection.Find(context.Background(), filter)
-// 	if err != nil {
-// 		http.Error(w, "Failed to fetch menu", http.StatusInternalServerError)
-// 		return
-// 	}
-// 	defer cursor.Close(context.Background())
-
-// 	for cursor.Next(context.Background()) {
-// 		var menu models.Menu
-// 		if err := cursor.Decode(&menu); err != nil {
-// 			http.Error(w, "Failed to decode menu", http.StatusInternalServerError)
-// 			return
-// 		}
-// 		menuList = append(menuList, menu)
-// 	}
-
-// 	if err := cursor.Err(); err != nil {
-// 		http.Error(w, "Cursor error", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	if len(menuList) == 0 {
-// 		menuList = []models.Menu{}
-// 	}
-
-// 	// Cache the list
-// 	// menuListJSON, _ := json.Marshal(menuList)
-// 	// rdx.RdxSet(cacheKey, string(menuListJSON))
-
-// 	// Respond with the list of menu
-// 	w.Header().Set("Content-Type", "application/json")
-// 	json.NewEncoder(w).Encode(menuList)
-// }
 
 // Edit a menu item
 func EditMenu(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {

@@ -85,7 +85,7 @@ func EditEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	}
 
 	go mq.Emit(ctx, "event-updated", models.Index{EntityType: "event", EntityId: eventID, Method: "PUT"})
-	utils.SendJSONResponse(w, http.StatusOK, updatedEvent)
+	utils.RespondWithJSON(w, http.StatusOK, updatedEvent)
 }
 
 // Handle deleting event
@@ -135,5 +135,5 @@ func DeleteEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	go mq.Emit(ctx, "event-deleted", m)
 
 	// Send success response
-	utils.SendJSONResponse(w, http.StatusOK, map[string]string{"message": "Event deleted successfully"})
+	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "Event deleted successfully"})
 }

@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"naevis/db"
 	"naevis/filemgr"
-	"naevis/utils"
 	"net/http"
-	"path/filepath"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -120,9 +118,9 @@ func processEventImageUpload(r *http.Request, fieldName string, entity filemgr.E
 		return "", nil // skip silently if not present
 	}
 
-	if resize && eventID != "" {
-		utils.CreateThumb(eventID, filepath.Join("static", "uploads", string(entity), string(picture)), ".jpg", 300, 200)
-	}
+	// if resize && eventID != "" {
+	// 	utils.CreateThumb(eventID, filepath.Join("static", "uploads", string(entity), string(picture)), ".jpg", 300, 200)
+	// }
 
 	return fileName, nil
 }

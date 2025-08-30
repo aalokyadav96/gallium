@@ -161,11 +161,11 @@ func EditProfileBanner(w http.ResponseWriter, r *http.Request, _ httprouter.Para
 
 // 	InvalidateCachedProfile(claims.Username)
 
-// 	// Respond with the updated profile
-// 	if err := RespondWithUserProfile(w, claims.UserID); err != nil {
-// 		http.Error(w, "Internal server error", http.StatusInternalServerError)
-// 	}
-// }
+//		// Respond with the updated profile
+//		if err := RespondWithUserProfile(w, claims.UserID); err != nil {
+//			http.Error(w, "Internal server error", http.StatusInternalServerError)
+//		}
+//	}
 
 func uploadBannerHandler(_ http.ResponseWriter, r *http.Request, _ *middleware.Claims) (bson.M, error) {
 	update := bson.M{}

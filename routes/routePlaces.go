@@ -1,7 +1,7 @@
 package routes
 
 import (
-	"naevis/places"
+	places "naevis/places/tabs"
 	"naevis/ratelim"
 
 	"github.com/julienschmidt/httprouter"
@@ -106,11 +106,6 @@ func DisplayPlaceDetailsFallback(router *httprouter.Router) {
 	router.GET("/api/v1/place/:placeid/details", places.GetDetailsFallback)
 }
 
-// ❓ Fallback → Generic Place Info
-func AddDummyPlaces(router *httprouter.Router) {
-	router.GET("/api/v1/places/dummyplaces", places.GetDummyPlaces)
-}
-
 func AddPlaceTabRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
 	DisplayPlaceMenu(router)
 	DisplayPlaceRooms(router)
@@ -123,5 +118,4 @@ func AddPlaceTabRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimit
 	DisplayPlaceEvents(router)
 	DisplaySaloonSlots(router)
 	DisplayPlaceDetailsFallback(router)
-	AddDummyPlaces(router)
 }

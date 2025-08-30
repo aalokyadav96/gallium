@@ -33,23 +33,6 @@ func respondError(w http.ResponseWriter, status int, message string) {
 	respondJSON(w, status, map[string]string{"error": message})
 }
 
-// Replaces generic function: explicitly for baito slice
-func findAndRespondBaitos(ctx context.Context, w http.ResponseWriter, cursor *mongo.Cursor) {
-	defer cursor.Close(ctx)
-	var results []models.Baito
-	if err := cursor.All(ctx, &results); err != nil {
-		log.Printf("Cursor decode error: %v", err)
-		respondError(w, http.StatusInternalServerError, "Failed to parse results")
-		return
-	}
-
-	if len(results) == 0 {
-		results = []models.Baito{}
-	}
-
-	respondJSON(w, http.StatusOK, results)
-}
-
 // For baito applications
 func findAndRespondApplications(ctx context.Context, w http.ResponseWriter, cursor *mongo.Cursor) {
 	defer cursor.Close(ctx)
@@ -83,24 +66,6 @@ func findAndRespondBson(ctx context.Context, w http.ResponseWriter, cursor *mong
 }
 
 // ------------------- Handlers -------------------
-
-func GetLatestBaitos(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	ctx := r.Context()
-	opts := db.OptionsFindLatest(20).SetSort(bson.M{"createdAt": -1})
-
-	cursor, err := db.BaitoCollection.Find(ctx, bson.M{}, opts)
-	if err != nil {
-		log.Printf("DB error: %v", err)
-		respondError(w, http.StatusInternalServerError, "Database error")
-		return
-	}
-
-	findAndRespondBaitos(ctx, w, cursor)
-}
-
-func GetRelatedBaitos(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	GetLatestBaitos(w, r, nil)
-}
 
 func GetBaitoByID(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	ctx := r.Context()
@@ -214,67 +179,6 @@ func GetMyApplications(w http.ResponseWriter, r *http.Request, _ httprouter.Para
 	findAndRespondBson(ctx, w, cursor)
 }
 
-func CreateBaitoUserProfile(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	ctx := r.Context()
-	userID := utils.GetUserIDFromRequest(r)
-
-	if err := r.ParseMultipartForm(10 << 20); err != nil {
-		respondError(w, http.StatusBadRequest, "Invalid form data")
-		return
-	}
-	defer r.MultipartForm.RemoveAll()
-
-	var existing models.BaitoWorker
-	if err := db.BaitoWorkerCollection.FindOne(ctx, bson.M{"userid": userID}).Decode(&existing); err == nil {
-		respondError(w, http.StatusConflict, "Worker profile already exists")
-		return
-	} else if err != mongo.ErrNoDocuments {
-		log.Printf("DB error: %v", err)
-		respondError(w, http.StatusInternalServerError, "Database error")
-		return
-	}
-
-	age, err := strconv.Atoi(r.FormValue("age"))
-	if err != nil || age < 16 {
-		respondError(w, http.StatusBadRequest, "Invalid age")
-		return
-	}
-
-	profilePic, _ := filemgr.SaveFormFile(r.MultipartForm, "picture", filemgr.EntityBaito, filemgr.PicPhoto, false)
-
-	profile := models.BaitoWorker{
-		UserID:      userID,
-		BaitoUserID: utils.GenerateRandomString(12),
-		Name:        r.FormValue("name"),
-		Age:         age,
-		Phone:       r.FormValue("phone"),
-		Location:    r.FormValue("location"),
-		Preferred:   r.FormValue("roles"),
-		Bio:         r.FormValue("bio"),
-		ProfilePic:  profilePic,
-		CreatedAt:   time.Now(),
-	}
-
-	if _, err := db.BaitoWorkerCollection.InsertOne(ctx, profile); err != nil {
-		log.Printf("Insert error: %v", err)
-		respondError(w, http.StatusInternalServerError, "Failed to save worker profile")
-		return
-	}
-
-	_, _ = db.UserCollection.UpdateOne(ctx,
-		bson.M{"userid": userID},
-		bson.M{
-			"$addToSet": bson.M{"role": "worker"},
-			"$set":      bson.M{"updated_at": time.Now()},
-		},
-	)
-
-	go mq.Emit(ctx, "worker-created", models.Index{
-		EntityType: "worker", EntityId: profile.BaitoUserID, Method: "POST",
-	})
-	respondJSON(w, http.StatusOK, map[string]string{"message": "Worker profile created successfully"})
-}
-
 func CreateBaito(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	ctx := r.Context()
 	if err := r.ParseMultipartForm(20 << 20); err != nil {
@@ -379,42 +283,85 @@ func UpdateBaito(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 }
 
 // Workers
-func GetWorkers(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
 
-	search := strings.TrimSpace(r.URL.Query().Get("search"))
-	skill := strings.TrimSpace(r.URL.Query().Get("skill"))
+func CreateWorkerProfile(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	ctx := r.Context()
+	userID := utils.GetUserIDFromRequest(r)
 
-	filter := bson.M{}
-	if search != "" {
-		filter["$or"] = bson.A{
-			utils.RegexFilter("name", search),
-			utils.RegexFilter("address", search),
-		}
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid form data")
+		return
 	}
-	if skill != "" {
-		filter["preferred_roles"] = skill
-	}
+	defer r.MultipartForm.RemoveAll()
 
-	skip, limit := utils.ParsePagination(r, 10, 100)
-	opts := options.Find().SetSkip(skip).SetLimit(limit).SetSort(bson.M{"created_at": -1})
-
-	workers, err := utils.FindAndDecode[models.BaitoWorker](ctx, db.BaitoWorkerCollection, filter, opts)
-	if err != nil {
-		utils.Error(w, http.StatusInternalServerError, "Failed to fetch workers")
+	var existing models.BaitoWorker
+	if err := db.BaitoWorkerCollection.FindOne(ctx, bson.M{"userid": userID}).Decode(&existing); err == nil {
+		respondError(w, http.StatusConflict, "Worker profile already exists")
+		return
+	} else if err != mongo.ErrNoDocuments {
+		log.Printf("DB error: %v", err)
+		respondError(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 
-	if len(workers) == 0 {
-		workers = []models.BaitoWorker{}
+	age, err := strconv.Atoi(r.FormValue("age"))
+	if err != nil || age < 16 {
+		respondError(w, http.StatusBadRequest, "Invalid age")
+		return
 	}
 
-	total, _ := db.BaitoWorkerCollection.CountDocuments(ctx, filter)
-	utils.JSON(w, http.StatusOK, map[string]any{
-		"data":  workers,
-		"total": total,
+	profilePic, _ := filemgr.SaveFormFile(r.MultipartForm, "picture", filemgr.EntityBaito, filemgr.PicPhoto, false)
+
+	profile := models.BaitoWorker{
+		UserID:      userID,
+		BaitoUserID: utils.GenerateRandomString(12),
+		Name:        r.FormValue("name"),
+		Age:         age,
+		Phone:       r.FormValue("phone"),
+		Location:    r.FormValue("location"),
+		Preferred:   r.FormValue("roles"),
+		Bio:         r.FormValue("bio"),
+		ProfilePic:  profilePic,
+		CreatedAt:   time.Now(),
+	}
+
+	if _, err := db.BaitoWorkerCollection.InsertOne(ctx, profile); err != nil {
+		log.Printf("Insert error: %v", err)
+		respondError(w, http.StatusInternalServerError, "Failed to save worker profile")
+		return
+	}
+
+	_, _ = db.UserCollection.UpdateOne(ctx,
+		bson.M{"userid": userID},
+		bson.M{
+			"$addToSet": bson.M{"role": "worker"},
+			"$set":      bson.M{"updated_at": time.Now()},
+		},
+	)
+
+	go mq.Emit(ctx, "worker-created", models.Index{
+		EntityType: "worker", EntityId: profile.BaitoUserID, Method: "POST",
 	})
+	respondJSON(w, http.StatusOK, map[string]string{"message": "Worker profile created successfully"})
+}
+
+func GetWorkerById(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	var worker models.BaitoWorker
+	err := db.BaitoWorkerCollection.FindOne(ctx, bson.M{"userid": ps.ByName("workerId")}).Decode(&worker)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			respondError(w, http.StatusNotFound, "Worker not found")
+		} else {
+			log.Printf("DB error: %v", err)
+			respondError(w, http.StatusInternalServerError, "Failed to fetch worker")
+		}
+		return
+	}
+
+	respondJSON(w, http.StatusOK, worker)
 }
 
 func GetWorkerSkills(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
@@ -439,23 +386,4 @@ func GetWorkerSkills(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 	}
 
 	respondJSON(w, http.StatusOK, skills)
-}
-
-func GetWorkerById(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	var worker models.BaitoWorker
-	err := db.BaitoWorkerCollection.FindOne(ctx, bson.M{"baito_user_id": ps.ByName("workerId")}).Decode(&worker)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			respondError(w, http.StatusNotFound, "Worker not found")
-		} else {
-			log.Printf("DB error: %v", err)
-			respondError(w, http.StatusInternalServerError, "Failed to fetch worker")
-		}
-		return
-	}
-
-	respondJSON(w, http.StatusOK, worker)
 }

@@ -33,7 +33,7 @@ type Farm struct {
 	ContactInfo        ContactInfo `bson:"contactInfo,omitempty" json:"contactInfo,omitempty"`
 	AvailabilityTiming string      `bson:"availabilityTiming,omitempty" json:"availabilityTiming,omitempty"`
 	Tags               []string    `bson:"tags,omitempty"        json:"tags,omitempty"`
-	Photo              string      `bson:"photo,omitempty"       json:"photo,omitempty"`
+	Banner             string      `bson:"banner,omitempty"       json:"photo,omitempty"`
 	Crops              []Crop      `bson:"crops" json:"crops,omitempty"` // loaded via lookup or separate query
 	Media              []string    `bson:"media,omitempty"       json:"media,omitempty"`
 	AvgRating          float64     `bson:"avgRating,omitempty"   json:"avgRating,omitempty"`
@@ -68,6 +68,7 @@ type Crop struct {
 	PriceHistory []PricePoint `json:"priceHistory,omitempty"`
 	FieldPlot    string       `json:"fieldPlot,omitempty"`
 	CreatedAt    time.Time    `json:"createdAt"`
+	CreatedBy    string       `json:"createdby"`
 	FarmID       string       `bson:"farmId,omitempty" json:"farmId,omitempty"`
 }
 
@@ -100,6 +101,7 @@ type CropListing struct {
 	AvailableQtyKg int      `json:"availableQtyKg,omitempty"`
 	HarvestDate    string   `json:"harvestDate,omitempty"` // ISO string
 	Tags           []string `json:"tags,omitempty"`
+	ImageURL       string   `json:"imageUrl,omitempty"`
 }
 
 type Product struct {

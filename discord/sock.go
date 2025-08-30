@@ -28,7 +28,8 @@ var (
 	}
 )
 
-// WebSocket handler
+// HandleWebSocket (updated parts)
+// Replace the message-handling switch (or integrate these changes into your existing function)
 func HandleWebSocket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	userID := utils.GetUserIDFromRequest(r)
 	log.Println("=================================", userID)
@@ -51,7 +52,7 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 		log.Println("WS disconnected:", userID)
 	}()
 
-	// Start ping ticker for connection keep-alive
+	// ping ticker (unchanged)
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
@@ -71,6 +72,7 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 			MediaURL  string `json:"mediaUrl"`
 			MediaType string `json:"mediaType"`
 			Online    bool   `json:"online"`
+			ClientID  string `json:"clientId,omitempty"`
 		}
 
 		if err := conn.ReadJSON(&in); err != nil {
@@ -92,15 +94,27 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 				break
 			}
 
-			broadcastToChat(in.ChatID, map[string]interface{}{
-				"type":    "message",
-				"message": msg,
-			})
+			// Broadcast a flattened payload that the frontend expects.
+			// Include clientId if provided so the client can reconcile pending messages.
+			payload := map[string]interface{}{
+				"type":      "message",
+				"id":        msg.ID.Hex(),
+				"sender":    msg.Sender,
+				"content":   msg.Content,
+				"createdAt": msg.CreatedAt,
+				"media":     msg.Media,
+			}
+			if in.ClientID != "" {
+				payload["clientId"] = in.ClientID
+			}
+
+			broadcastToChat(in.ChatID, payload)
 
 		case "typing":
+			// broadcast with 'sender' key to match frontend expectations
 			broadcastToChat(in.ChatID, map[string]interface{}{
 				"type":   "typing",
-				"from":   userID,
+				"sender": userID,
 				"chatId": in.ChatID,
 			})
 
