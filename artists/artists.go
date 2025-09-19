@@ -24,13 +24,54 @@ func GetArtistByID(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 	artistId := ps.ByName("id")
 	var artist models.Artist
 
+	// Fetch artist info
 	if err := db.ArtistsCollection.FindOne(ctx, bson.M{"artistid": artistId}).Decode(&artist); err != nil {
 		utils.RespondWithError(w, http.StatusNotFound, "Artist not found")
 		return
 	}
 
-	utils.RespondWithJSON(w, http.StatusOK, artist)
+	// Default: not subscribed
+	isSubscribed := false
+
+	// Get current logged-in user ID
+	currentUserID := utils.GetUserIDFromRequest(r)
+	if currentUserID != "" {
+		// Check if the user has subscribed to this artist
+		count, err := db.SubscribersCollection.CountDocuments(ctx, bson.M{
+			"userid": currentUserID,
+			"subscribed": bson.M{
+				"$in": []string{artistId},
+			},
+		})
+		if err == nil && count > 0 {
+			isSubscribed = true
+		}
+	}
+
+	// Response struct: embed artist + subscription info
+	resp := struct {
+		models.Artist
+		IsSubscribed bool `json:"isSubscribed"`
+	}{
+		Artist:       artist,
+		IsSubscribed: isSubscribed,
+	}
+
+	utils.RespondWithJSON(w, http.StatusOK, resp)
 }
+
+// func GetArtistByID(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+// 	ctx := r.Context()
+// 	artistId := ps.ByName("id")
+// 	var artist models.Artist
+
+// 	if err := db.ArtistsCollection.FindOne(ctx, bson.M{"artistid": artistId}).Decode(&artist); err != nil {
+// 		utils.RespondWithError(w, http.StatusNotFound, "Artist not found")
+// 		return
+// 	}
+
+// 	utils.RespondWithJSON(w, http.StatusOK, artist)
+// }
 
 func GetArtistsByEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	ctx := r.Context()

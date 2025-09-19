@@ -9,6 +9,7 @@ const (
 	EntityArtist  EntityType = "artist"
 	EntityUser    EntityType = "user"
 	EntityBaito   EntityType = "baito"
+	EntityWorker  EntityType = "worker"
 	EntitySong    EntityType = "song"
 	EntityPost    EntityType = "post"
 	EntityChat    EntityType = "chat"
@@ -53,7 +54,7 @@ var (
 		PicBanner:  {"image/jpeg", "image/png", "image/webp"},
 		PicMember:  {"image/jpeg", "image/png", "image/webp"},
 		PicSeating: {"image/jpeg", "image/png", "image/webp"},
-		PicAudio:   {"audio/mpeg", "audio/wav", "audio/aac"},
+		PicAudio:   {"audio/mpeg", "audio/wav", "audio/aac", "video/mp4"},
 		PicVideo:   {"video/mp4", "video/webm"},
 		PicDocument: {
 			"application/pdf",

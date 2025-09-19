@@ -7,6 +7,8 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -92,58 +94,6 @@ func ValidateImageFileType(w http.ResponseWriter, header *multipart.FileHeader) 
 	return true
 }
 
-// // --- Thumbnail Creation ---
-
-// func CreateThumb(filename, fileLocation, fileType string, thumbWidth, thumbHeight int) error {
-// 	inputPath := filepath.Join(fileLocation, filename+fileType)
-// 	outputDir := filepath.Join(fileLocation, "thumb")
-// 	outputPath := filepath.Join(outputDir, filename+fileType)
-
-// 	// Ensure output directory exists
-// 	if err := ensureDir(outputDir); err != nil {
-// 		log.Printf("failed to create thumbnail directory: %v", err)
-// 		return err
-// 	}
-
-// 	bgColor := color.Transparent
-
-// 	img, err := imaging.Open(inputPath)
-// 	if err != nil {
-// 		log.Printf("failed to open input image: %v", err)
-// 		return err
-// 	}
-
-// 	newWidth, newHeight := fitResolution(img.Bounds().Dx(), img.Bounds().Dy(), thumbWidth, thumbHeight)
-// 	resizedImg := imaging.Resize(img, newWidth, newHeight, imaging.Lanczos)
-
-// 	thumbImg := imaging.New(thumbWidth, thumbHeight, bgColor)
-// 	xPos := (thumbWidth - newWidth) / 2
-// 	yPos := (thumbHeight - newHeight) / 2
-// 	thumbImg = imaging.Paste(thumbImg, resizedImg, image.Pt(xPos, yPos))
-
-// 	if err := imaging.Save(thumbImg, outputPath); err != nil {
-// 		log.Printf("failed to save thumbnail: %v", err)
-// 		return err
-// 	}
-
-// 	// Notify via MQ
-// 	mq.Notify("thumbnail-created", models.Index{})
-
-// 	return nil
-// }
-
-// func fitResolution(origWidth, origHeight, maxWidth, maxHeight int) (int, int) {
-// 	if origWidth <= maxWidth && origHeight <= maxHeight {
-// 		return origWidth, origHeight
-// 	}
-
-// 	widthRatio := float64(maxWidth) / float64(origWidth)
-// 	heightRatio := float64(maxHeight) / float64(origHeight)
-// 	scaleFactor := math.Min(widthRatio, heightRatio)
-
-// 	return int(float64(origWidth) * scaleFactor), int(float64(origHeight) * scaleFactor)
-// }
-
 // // --- Directory Helper ---
 
 func EnsureDir(dir string) error {
@@ -171,4 +121,15 @@ func SplitTags(input string) []string {
 		}
 	}
 	return tags
+}
+
+// ——————————————————————————————————————————————————————————
+// SanitizeFilename: exactly as before
+func SanitizeFilename(name string) string {
+	re := regexp.MustCompile(`[^\w.\-]`)
+	clean := re.ReplaceAllString(filepath.Base(name), "_")
+	if clean == "" {
+		return "file"
+	}
+	return clean
 }

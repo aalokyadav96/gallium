@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"naevis/globals"
 	"naevis/models"
+	"naevis/rdx"
 
 	"github.com/julienschmidt/httprouter"
 )
@@ -35,7 +35,7 @@ func EventHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		return
 	}
 
-	if err := globals.RedisClient.Publish(r.Context(), "indexing-events", string(body)).Err(); err != nil {
+	if err := rdx.Conn.Publish(r.Context(), "indexing-events", string(body)).Err(); err != nil {
 		http.Error(w, "Failed to enqueue indexing job", http.StatusInternalServerError)
 		return
 	}

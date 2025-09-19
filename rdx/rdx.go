@@ -126,3 +126,11 @@ func Exists(key string) bool {
 	exists, _ := Conn.Exists(ctx, key).Result()
 	return exists > 0
 }
+func RdxSetNX(key, value string, ttl time.Duration) (bool, error) {
+	ctx := context.Background()
+	ok, err := Conn.SetNX(ctx, key, value, ttl).Result()
+	if err != nil {
+		return false, fmt.Errorf("error while doing SETNX command in redis: %v", err)
+	}
+	return ok, nil
+}

@@ -18,6 +18,7 @@ import (
 )
 
 // AddToCart increments quantity if the item exists, or inserts a new CartItem.
+// Returns the updated grouped cart.
 func AddToCart(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
@@ -29,7 +30,6 @@ func AddToCart(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		return
 	}
 
-	// Must be logged in
 	userID := utils.GetUserIDFromRequest(r)
 	if userID == "" {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -37,26 +37,27 @@ func AddToCart(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	}
 	item.UserID = userID
 
-	// Validate required fields
-	if item.Item == "" || item.Category == "" || item.Quantity <= 0 || item.Price <= 0 {
+	if item.ItemId == "" || item.ItemName == "" || item.Category == "" || item.Quantity <= 0 || item.Price <= 0 {
 		http.Error(w, "Missing or invalid fields", http.StatusBadRequest)
 		return
 	}
 
-	// Upsert: increment quantity if same user/item/farm/category exists
 	filter := bson.M{
-		"userId":   item.UserID,
-		"item":     item.Item,
-		"farm":     item.Farm,
-		"farmid":   item.FarmId,
-		"category": item.Category,
+		"userId":     item.UserID,
+		"itemId":     item.ItemId,
+		"entityId":   item.EntityId,
+		"entityType": item.EntityType,
+		"category":   item.Category,
 	}
 	update := bson.M{
 		"$inc": bson.M{"quantity": item.Quantity},
 		"$setOnInsert": bson.M{
-			"price":   item.Price,
-			"unit":    item.Unit,
-			"addedAt": time.Now(),
+			"itemName":   item.ItemName,
+			"itemType":   item.ItemType,
+			"price":      item.Price,
+			"unit":       item.Unit,
+			"entityName": item.EntityName,
+			"addedAt":    time.Now(),
 		},
 	}
 	opts := options.Update().SetUpsert(true)
@@ -67,52 +68,17 @@ func AddToCart(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		return
 	}
 
-	utils.RespondWithJSON(w, http.StatusCreated, map[string]string{"status": "added"})
-}
-
-// GetCart returns all cart items for the user, optional ?category= filter
-func GetCart(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-
-	userID := utils.GetUserIDFromRequest(r)
-	if userID == "" {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	// Build filter
-	filter := bson.M{"userId": userID}
-	if cat := r.URL.Query().Get("category"); cat != "" {
-		filter["category"] = cat
-	}
-
-	cursor, err := db.CartCollection.Find(ctx, filter)
+	groupedCart, err := getGroupedCart(ctx, userID)
 	if err != nil {
-		log.Println("GetCart Find error:", err)
-		http.Error(w, "Could not retrieve cart", http.StatusInternalServerError)
-		return
-	}
-	defer cursor.Close(ctx)
-
-	var items []models.CartItem
-	if err := cursor.All(ctx, &items); err != nil {
-		log.Println("GetCart cursor.All error:", err)
-		http.Error(w, "Error reading cart data", http.StatusInternalServerError)
+		http.Error(w, "Failed to fetch updated cart", http.StatusInternalServerError)
 		return
 	}
 
-	if len(items) == 0 {
-		items = []models.CartItem{}
-	}
-
-	utils.RespondWithJSON(w, http.StatusOK, items)
-	// utils.RespondWithJSONWithHeader(w, http.StatusOK, items, map[string]string{
-	// 	"Content-Type": "application/json",
-	// })
+	utils.RespondWithJSON(w, http.StatusCreated, groupedCart)
 }
 
-// UpdateCart replaces *all* items in a given category for the user
+// UpdateCart replaces all items in a given category for the user.
+// Returns the updated grouped cart.
 func UpdateCart(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
@@ -164,12 +130,38 @@ func UpdateCart(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		}
 	}
 
-	utils.RespondWithJSON(w, http.StatusCreated, map[string]string{"status": "updated"})
+	groupedCart, err := getGroupedCart(ctx, userID)
+	if err != nil {
+		http.Error(w, "Failed to fetch updated cart", http.StatusInternalServerError)
+		return
+	}
+
+	utils.RespondWithJSON(w, http.StatusCreated, groupedCart)
+}
+
+// GetCart returns all cart items for the user, optional ?category= filter,
+// grouped by category as map[string][]CartItem
+func GetCart(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	userID := utils.GetUserIDFromRequest(r)
+	if userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	groupedCart, err := getGroupedCart(ctx, userID)
+	if err != nil {
+		http.Error(w, "Failed to fetch cart", http.StatusInternalServerError)
+		return
+	}
+
+	utils.RespondWithJSON(w, http.StatusOK, groupedCart)
 }
 
 // InitiateCheckout is a placeholder for any pre-checkout locking or analytics
 func InitiateCheckout(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	// no-op for now
 	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"status": "checkout_initiated"})
 }
 
@@ -194,11 +186,11 @@ func CreateCheckoutSession(w http.ResponseWriter, r *http.Request, _ httprouter.
 	session.UserID = userID
 	session.CreatedAt = time.Now()
 
-	// TODO: persist session in Redis or DB if needed
 	utils.RespondWithJSON(w, http.StatusCreated, session)
 }
 
-// PlaceOrder records a finalized order, clears the cart for the user
+// PlaceOrder records a finalized order, clears the cart for the user,
+// and stores the current cart grouped by category in Order.Items
 func PlaceOrder(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
@@ -226,18 +218,47 @@ func PlaceOrder(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		order.ApprovedBy = []string{}
 	}
 
+	// Fetch the latest cart and store it in the order
+	cartItems, err := getGroupedCart(ctx, userID)
+	if err != nil {
+		http.Error(w, "Failed to fetch cart for order", http.StatusInternalServerError)
+		return
+	}
+	order.Items = cartItems
+
 	if _, err := db.OrderCollection.InsertOne(ctx, order); err != nil {
 		log.Println("PlaceOrder InsertOne error:", err)
 		http.Error(w, "Order creation failed", http.StatusInternalServerError)
 		return
 	}
 
-	// Optionally clear the user’s cart:
-	/**/
+	// Clear the user’s cart
 	if _, err := db.CartCollection.DeleteMany(ctx, bson.M{"userId": userID}); err != nil {
 		log.Println("PlaceOrder Cart cleanup error:", err)
 	}
-	/**/
 
 	utils.RespondWithJSON(w, http.StatusCreated, order)
+}
+
+// getGroupedCart fetches all cart items for a user and groups them by category
+func getGroupedCart(ctx context.Context, userID string) (map[string][]models.CartItem, error) {
+	filter := bson.M{"userId": userID}
+	cursor, err := db.CartCollection.Find(ctx, filter)
+	if err != nil {
+		log.Println("getGroupedCart Find error:", err)
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var items []models.CartItem
+	if err := cursor.All(ctx, &items); err != nil {
+		log.Println("getGroupedCart cursor.All error:", err)
+		return nil, err
+	}
+
+	grouped := make(map[string][]models.CartItem)
+	for _, item := range items {
+		grouped[item.Category] = append(grouped[item.Category], item)
+	}
+	return grouped, nil
 }

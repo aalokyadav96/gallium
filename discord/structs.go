@@ -1,28 +1,43 @@
 package discord
 
 import (
-	"context"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-var ctx = context.Background()
+//
+// ==== Struct Definitions ====
+//
 
+// IncomingWSMessage represents a generic WebSocket inbound payload
+type IncomingWSMessage struct {
+	Type      string `json:"type"`
+	ChatID    string `json:"chatId"`
+	Content   string `json:"content"`
+	MediaURL  string `json:"mediaUrl"`
+	MediaType string `json:"mediaType"`
+	Online    bool   `json:"online"`
+	ClientID  string `json:"clientId,omitempty"`
+}
+
+// Chat represents a chat document
 type Chat struct {
 	ID           primitive.ObjectID `bson:"_id,omitempty"    json:"id"`
 	Participants []string           `bson:"participants"     json:"participants"`
 	CreatedAt    time.Time          `bson:"createdAt"        json:"createdAt"`
 	UpdatedAt    time.Time          `bson:"updatedAt"        json:"updatedAt"`
-	EntityType   string             `bson:"entitytype" json:"entitytype"`
-	EntityId     string             `bson:"entityid" json:"entityid"`
+	EntityType   string             `bson:"entitytype"       json:"entitytype"`
+	EntityId     string             `bson:"entityid"         json:"entityid"`
 }
 
+// Media represents media attached to a message
 type Media struct {
 	URL  string `bson:"url"  json:"url"`
 	Type string `bson:"type" json:"type"`
 }
 
+// Message represents a chat message
 type Message struct {
 	ID         primitive.ObjectID `bson:"_id,omitempty"     json:"id"`
 	ChatID     primitive.ObjectID `bson:"chatId"            json:"chatId"`

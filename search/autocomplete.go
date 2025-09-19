@@ -4,11 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"naevis/rdx"
 	"net/http"
 	"strings"
 	"time"
-
-	"naevis/globals"
 
 	"github.com/julienschmidt/httprouter"
 	"github.com/redis/go-redis/v9"
@@ -25,7 +24,7 @@ func AddAutocompleteWords(ctx context.Context, words []string) error {
 	if len(words) == 0 {
 		return nil
 	}
-	pipe := globals.RedisClient.Pipeline()
+	pipe := rdx.Conn.Pipeline()
 	for _, w := range words {
 		if w != "" {
 			pipe.ZAdd(ctx, autocompleteZSet(), redis.Z{Score: 0, Member: w})
@@ -43,7 +42,7 @@ func GetAutocompleteSuggestions(ctx context.Context, prefix string, limit int, t
 	}
 
 	cacheKey := autocompleteCacheKey(prefix)
-	if data, err := globals.RedisClient.Get(ctx, cacheKey).Result(); err == nil {
+	if data, err := rdx.Conn.Get(ctx, cacheKey).Result(); err == nil {
 		var res []string
 		if json.Unmarshal([]byte(data), &res) == nil {
 			if len(res) > limit {
@@ -55,7 +54,7 @@ func GetAutocompleteSuggestions(ctx context.Context, prefix string, limit int, t
 
 	min := "[" + prefix
 	max := "[" + prefix + "\xff"
-	words, err := globals.RedisClient.ZRangeByLex(ctx, autocompleteZSet(), &redis.ZRangeBy{
+	words, err := rdx.Conn.ZRangeByLex(ctx, autocompleteZSet(), &redis.ZRangeBy{
 		Min:    min,
 		Max:    max,
 		Offset: 0,
@@ -67,7 +66,7 @@ func GetAutocompleteSuggestions(ctx context.Context, prefix string, limit int, t
 
 	if ttl > 0 {
 		if data, err := json.Marshal(words); err == nil {
-			_ = globals.RedisClient.Set(ctx, cacheKey, data, ttl).Err()
+			_ = rdx.Conn.Set(ctx, cacheKey, data, ttl).Err()
 		}
 	}
 	return words, nil

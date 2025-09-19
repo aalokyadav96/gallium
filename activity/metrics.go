@@ -57,7 +57,7 @@ func HandleAnalyticsEvent(w http.ResponseWriter, r *http.Request, _ httprouter.P
 		docs = append(docs, doc)
 	}
 
-	_, err := db.AnalyticsCollection.InsertMany(globals.CTX, docs)
+	_, err := db.AnalyticsCollection.InsertMany(globals.Ctx, docs)
 	if err != nil {
 		http.Error(w, "failed to save events", http.StatusInternalServerError)
 		return

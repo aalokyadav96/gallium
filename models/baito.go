@@ -19,7 +19,11 @@ type Baito struct {
 	BannerURL    string    `bson:"banner,omitempty" json:"banner,omitempty"`
 	Images       []string  `bson:"images" json:"images"`
 	WorkHours    string    `bson:"workHours" json:"workHours"`
+	Benefits     string    `bson:"benefits,omitempty" json:"benefits,omitempty"`
+	Email        string    `bson:"email,omitempty" json:"email,omitempty"`
+	Tags         []string  `bson:"tags,omitempty" json:"tags,omitempty"`
 	CreatedAt    time.Time `bson:"createdAt" json:"createdAt"`
+	UpdatedAt    time.Time `bson:"updatedAt,omitempty" json:"updatedAt,omitempty"`
 	OwnerID      string    `bson:"ownerId" json:"ownerId"`
 }
 
@@ -33,14 +37,22 @@ type BaitoApplication struct {
 }
 
 type BaitoWorker struct {
-	UserID      string    `json:"userid" bson:"userid"`
-	BaitoUserID string    `json:"baito_user_id" bson:"baito_user_id"`
-	Name        string    `json:"name" bson:"name"`
-	Age         int       `json:"age" bson:"age"`
-	Phone       string    `json:"phone_number" bson:"phone_number"`
-	Location    string    `json:"address" bson:"address"`
-	Preferred   string    `json:"preferred_roles" bson:"preferred_roles"`
-	Bio         string    `json:"bio" bson:"bio"`
-	ProfilePic  string    `json:"profile_picture" bson:"profile_picture"`
-	CreatedAt   time.Time `json:"created_at" bson:"created_at"`
+	UserID       string    `json:"userid" bson:"userid"`
+	BaitoUserID  string    `json:"baito_user_id" bson:"baito_user_id"`
+	Name         string    `json:"name" bson:"name"`
+	Age          int       `json:"age" bson:"age"`
+	Phone        string    `json:"phone_number" bson:"phone_number"`
+	Location     string    `json:"address" bson:"address"`
+	Preferred    []string  `json:"preferred_roles" bson:"preferred_roles"`
+	Bio          string    `json:"bio" bson:"bio"`
+	ProfilePic   string    `json:"photo" bson:"photo"`
+	Email        string    `json:"email,omitempty" bson:"email,omitempty"`
+	Experience   string    `json:"experience,omitempty" bson:"experience,omitempty"`
+	Skills       string    `json:"skills,omitempty" bson:"skills,omitempty"`
+	Availability string    `json:"availability,omitempty" bson:"availability,omitempty"`
+	ExpectedWage string    `json:"expected_wage,omitempty" bson:"expected_wage,omitempty"`
+	Languages    string    `json:"languages,omitempty" bson:"languages,omitempty"`
+	Documents    []string  `json:"documents,omitempty" bson:"documents,omitempty"`
+	CreatedAt    time.Time `json:"created_at" bson:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at,omitempty" bson:"updated_at,omitempty"`
 }

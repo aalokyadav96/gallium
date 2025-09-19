@@ -19,12 +19,15 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+// UploadAttachment handles media/file upload into a chat
 func UploadAttachment(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
 	user := utils.GetUserIDFromRequest(r)
-	chatIDHex := ps.ByName("chatId")
+
+	chatIDHex := ps.ByName("chatid")
 	chatID, err := primitive.ObjectIDFromHex(chatIDHex)
 	if err != nil {
-		writeErr(w, "invalid chatId", http.StatusBadRequest)
+		writeErr(w, "invalid chatid", http.StatusBadRequest)
 		return
 	}
 
@@ -47,7 +50,7 @@ func UploadAttachment(w http.ResponseWriter, r *http.Request, ps httprouter.Para
 
 	contentType := header.Header.Get("Content-Type")
 
-	// ✅ Map content type to correct PictureType
+	// Map content type → PictureType
 	var picType filemgr.PictureType
 	switch {
 	case strings.HasPrefix(contentType, "image/"):
@@ -61,15 +64,15 @@ func UploadAttachment(w http.ResponseWriter, r *http.Request, ps httprouter.Para
 		return
 	}
 
-	// ✅ Save file using filemgr
+	// Save file via filemgr
 	savedName, err := filemgr.SaveFormFile(r.MultipartForm, "file", filemgr.EntityChat, picType, false)
 	if err != nil {
 		writeErr(w, "cannot save file", http.StatusInternalServerError)
 		return
 	}
 
-	// ✅ Persist message (keeps contentType + saved filename)
-	msg, err := persistMediaMessage(chatID, user, savedName, contentType)
+	// Persist media message
+	msg, err := persistMediaMessage(ctx, chatID, user, savedName, contentType)
 	if err != nil {
 		writeErr(w, "failed to persist message", http.StatusInternalServerError)
 		return
@@ -80,6 +83,7 @@ func UploadAttachment(w http.ResponseWriter, r *http.Request, ps httprouter.Para
 }
 
 func GetUserChats(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	ctx := r.Context()
 	user := utils.GetUserIDFromRequest(r)
 	cursor, err := db.ChatsCollection.Find(ctx, bson.M{"participants": user})
 	if err != nil {
@@ -102,6 +106,7 @@ func GetUserChats(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 }
 
 func StartNewChat(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	ctx := r.Context()
 	user := utils.GetUserIDFromRequest(r)
 
 	var body struct {
@@ -165,9 +170,10 @@ func StartNewChat(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 }
 
 func GetChatByID(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	chatID, err := primitive.ObjectIDFromHex(ps.ByName("chatId"))
+	ctx := r.Context()
+	chatID, err := primitive.ObjectIDFromHex(ps.ByName("chatid"))
 	if err != nil {
-		http.Error(w, "invalid chatId", 400)
+		http.Error(w, "invalid chatid", 400)
 		return
 	}
 	var chat Chat
@@ -180,9 +186,10 @@ func GetChatByID(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 }
 
 func GetChatMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	chatID, err := primitive.ObjectIDFromHex(ps.ByName("chatId"))
+	ctx := r.Context()
+	chatID, err := primitive.ObjectIDFromHex(ps.ByName("chatid"))
 	if err != nil {
-		http.Error(w, "invalid chatId", 400)
+		http.Error(w, "invalid chatid", 400)
 		return
 	}
 	// pagination
@@ -200,7 +207,7 @@ func GetChatMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 	}
 
 	opts := options.Find().SetSort(bson.M{"createdAt": 1}).SetLimit(limit).SetSkip(skip)
-	cursor, err := db.MessagesCollection.Find(ctx, bson.M{"chatId": chatID}, opts)
+	cursor, err := db.MessagesCollection.Find(ctx, bson.M{"chatid": chatID}, opts)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -221,10 +228,13 @@ func GetChatMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 }
 
 // SendMessageREST (updated)
+
+// SendMessageREST handles plain text messages via HTTP
 func SendMessageREST(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	chatID, err := primitive.ObjectIDFromHex(ps.ByName("chatId"))
+	ctx := r.Context()
+	chatID, err := primitive.ObjectIDFromHex(ps.ByName("chatid"))
 	if err != nil {
-		http.Error(w, "invalid chatId", http.StatusBadRequest)
+		writeErr(w, "invalid chatid", http.StatusBadRequest)
 		return
 	}
 
@@ -233,18 +243,18 @@ func SendMessageREST(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 		ClientID string `json:"clientId,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "invalid body", http.StatusBadRequest)
+		writeErr(w, "invalid body", http.StatusBadRequest)
 		return
 	}
 
 	sender := utils.GetUserIDFromRequest(r)
-	msg, err := persistMessage(chatID, sender, body.Content, "", "")
+	msg, err := persistMessage(ctx, chatID, sender, body.Content, "", "")
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeErr(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Build response payload that includes clientId so the client can reconcile
+	// Build response payload (echo back clientId if provided)
 	resp := map[string]interface{}{
 		"id":        msg.ID.Hex(),
 		"sender":    msg.Sender,
@@ -261,6 +271,7 @@ func SendMessageREST(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 }
 
 func EditMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
 	msgID, err := primitive.ObjectIDFromHex(ps.ByName("messageId"))
 	if err != nil {
 		http.Error(w, "invalid messageId", 400)
@@ -284,6 +295,7 @@ func EditMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 }
 
 func DeleteMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
 	msgID, err := primitive.ObjectIDFromHex(ps.ByName("messageId"))
 	if err != nil {
 		http.Error(w, "invalid messageId", 400)
@@ -301,9 +313,10 @@ func DeleteMessage(w http.ResponseWriter, r *http.Request, ps httprouter.Params)
 }
 
 func SearchMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	chatID, err := primitive.ObjectIDFromHex(ps.ByName("chatId"))
+	ctx := r.Context()
+	chatID, err := primitive.ObjectIDFromHex(ps.ByName("chatid"))
 	if err != nil {
-		http.Error(w, "invalid chatId", http.StatusBadRequest)
+		http.Error(w, "invalid chatid", http.StatusBadRequest)
 		return
 	}
 	term := r.URL.Query().Get("term")
@@ -322,7 +335,7 @@ func SearchMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 		}
 	}
 
-	filter := bson.M{"chatId": chatID}
+	filter := bson.M{"chatid": chatID}
 	if term != "" {
 		filter["content"] = bson.M{"$regex": primitive.Regex{Pattern: term, Options: "i"}}
 	}
@@ -356,6 +369,7 @@ func SearchMessages(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 
 func GetUnreadCount(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	user := utils.GetUserIDFromRequest(r)
+	ctx := r.Context()
 
 	// First, find all chats the user participates in
 	cursor, err := db.ChatsCollection.Find(ctx, bson.M{"participants": user})
@@ -366,7 +380,7 @@ func GetUnreadCount(w http.ResponseWriter, r *http.Request, _ httprouter.Params)
 	defer cursor.Close(ctx)
 
 	type Unread struct {
-		ChatID string `json:"chatId"`
+		ChatID string `json:"chatid"`
 		Count  int64  `json:"count"`
 	}
 	var result []Unread
@@ -377,7 +391,7 @@ func GetUnreadCount(w http.ResponseWriter, r *http.Request, _ httprouter.Params)
 			continue
 		}
 		count, err := db.MessagesCollection.CountDocuments(ctx, bson.M{
-			"chatId": chat.ID,
+			"chatid": chat.ID,
 			"readBy": bson.M{"$ne": user},
 		})
 		if err != nil {
@@ -396,6 +410,7 @@ func GetUnreadCount(w http.ResponseWriter, r *http.Request, _ httprouter.Params)
 }
 
 func MarkAsRead(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
 	msgID, err := primitive.ObjectIDFromHex(ps.ByName("messageId"))
 	if err != nil {
 		http.Error(w, "invalid messageId", http.StatusBadRequest)

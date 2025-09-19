@@ -185,7 +185,7 @@ func GetCropTypes(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 					},
 				},
 			},
-			"imageUrl": bson.M{"$first": "$imageurl"}, // match actual DB field name
+			"imageUrl": bson.M{"$first": "$imageUrl"}, // match actual DB field name
 			"unit":     bson.M{"$first": "$unit"},
 		}}},
 		{{Key: "$project", Value: bson.M{

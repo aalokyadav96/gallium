@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"naevis/globals"
 	"naevis/models"
+	"naevis/rdx"
 	"naevis/search"
 )
 
@@ -35,7 +35,7 @@ func Emit(ctx context.Context, eventName string, content models.Index) {
 		return
 	}
 
-	if err := globals.RedisClient.Publish(context.Background(), "indexing-events", data).Err(); err != nil {
+	if err := rdx.Conn.Publish(context.Background(), "indexing-events", data).Err(); err != nil {
 		log.Printf("[Emit] Failed to publish event to Redis: %v", err)
 		return
 	}
@@ -44,16 +44,9 @@ func Emit(ctx context.Context, eventName string, content models.Index) {
 	log.Printf("[Emit] END")
 }
 
-// // Emit sends the event to the indexing system.
-// // eventName is for logging/tracking purposes only.
-// func Emit(ctx context.Context, eventName string, content models.Index) {
-// 	fmt.Println(eventName, "emitted", content)
-// 	search.IndexDatainRedis(ctx, content)
-// }
-
 func StartIndexingWorker() {
 	ctx := context.Background()
-	sub := globals.RedisClient.Subscribe(ctx, "indexing-events")
+	sub := rdx.Conn.Subscribe(ctx, "indexing-events")
 	ch := sub.Channel()
 
 	log.Println("[IndexingWorker] Listening for indexing events...")
@@ -73,27 +66,3 @@ func StartIndexingWorker() {
 		}
 	}
 }
-
-// Printer sends raw JSON to an external endpoint (placeholder).
-// Replace with your actual QUIC or HTTP implementation when ready.
-/*
-func Printer(jsonData []byte) error {
-	start := time.Now()
-	resp, err := http.Post(SERP_URL, "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return fmt.Errorf("failed to send request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response: %v", err)
-	}
-
-	elapsed := time.Since(start)
-	fmt.Printf("Server Response: %s\n", string(body))
-	fmt.Printf("Execution Time: %v\n", elapsed)
-
-	return nil
-}
-*/

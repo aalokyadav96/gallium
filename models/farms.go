@@ -94,6 +94,7 @@ type CropCatalogueItem struct {
 
 type CropListing struct {
 	FarmID         string   `json:"farmId"`
+	CropId         string   `json:"cropid"`
 	FarmName       string   `json:"farmName"`
 	Location       string   `json:"location"`
 	Breed          string   `json:"breed"`

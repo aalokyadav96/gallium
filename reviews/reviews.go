@@ -44,48 +44,6 @@ func GetReviews(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	utils.RespondWithJSON(w, http.StatusOK, map[string]any{"status": http.StatusOK, "ok": true, "reviews": reviews})
 }
 
-// // GET /api/reviews/:entityType/:entityId
-// func GetReviews(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-// 	entityType := ps.ByName("entityType")
-// 	entityId := ps.ByName("entityId")
-
-// 	skip, limit, filters, sort := parseQueryParams(r)
-// 	filters["entity_type"] = entityType
-// 	filters["entity_id"] = entityId
-
-// 	// Create options for the Find query
-// 	findOptions := options.Find().
-// 		SetSkip(skip).
-// 		SetLimit(limit).
-// 		SetSort(sort)
-
-// 	cursor, err := db.ReviewsCollection.Find(context.TODO(), filters, findOptions)
-// 	if err != nil {
-// 		log.Printf("Error retrieving reviews: %v", err)
-// 		http.Error(w, "Failed to retrieve reviews", http.StatusInternalServerError)
-// 		return
-// 	}
-// 	defer cursor.Close(context.TODO())
-
-// 	var reviews []models.Review
-// 	if err = cursor.All(context.TODO(), &reviews); err != nil {
-// 		log.Printf("Error decoding reviews: %v", err)
-// 		http.Error(w, "Failed to retrieve reviews", http.StatusInternalServerError)
-// 		return
-// 	}
-// 	if len(reviews) == 0 {
-// 		reviews = []models.Review{}
-// 	}
-// 	w.Header().Set("Content-Type", "application/json")
-// 	response := map[string]any{
-// 		"status":  http.StatusOK,
-// 		"ok":      true,
-// 		"reviews": reviews,
-// 	}
-// 	log.Println("gets reviews : ", reviews)
-// 	json.NewEncoder(w).Encode(response)
-// }
-
 // GET /api/reviews/:entityType/:entityId/:reviewId
 func GetReview(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	reviewId := ps.ByName("reviewId")
@@ -233,39 +191,6 @@ func DeleteReview(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 
 	w.WriteHeader(http.StatusOK)
 }
-
-// Utility functions remain unchanged (e.g., `parseQueryParams`, `isAdmin`)
-
-// // Parse pagination and sorting parameters
-// func parseQueryParams(r *http.Request) (int64, int64, bson.M, bson.D) {
-// 	query := r.URL.Query()
-
-// 	page, err := strconv.Atoi(query.Get("page"))
-// 	if err != nil || page < 1 {
-// 		page = 1
-// 	}
-// 	limit, err := strconv.Atoi(query.Get("limit"))
-// 	if err != nil || limit < 1 {
-// 		limit = 10
-// 	}
-
-// 	skip := int64((page - 1) * limit)
-// 	filters := bson.M{}
-// 	if rating := query.Get("rating"); rating != "" {
-// 		ratingVal, _ := strconv.Atoi(rating)
-// 		filters["rating"] = ratingVal
-// 	}
-
-// 	sort := bson.D{}
-// 	switch query.Get("sort") {
-// 	case "date_asc":
-// 		sort = bson.D{{Key: "date", Value: 1}}
-// 	case "date_desc":
-// 		sort = bson.D{{Key: "date", Value: -1}}
-// 	}
-
-// 	return skip, int64(limit), filters, sort
-// }
 
 func isAdmin(ctx context.Context) bool {
 	role, ok := ctx.Value(roleKey).(string)

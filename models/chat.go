@@ -31,7 +31,7 @@ type MessagePreview struct {
 	Timestamp time.Time `bson:"timestamp" json:"timestamp"`
 }
 
-// ReplyRef represents the client‐side “replyTo” payload.
+// ReplyRef represents the clientâ€side â€œreplyToâ€ payload.
 type ReplyRef struct {
 	ID   string `json:"id"`
 	User string `json:"user"`

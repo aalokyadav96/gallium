@@ -31,6 +31,7 @@ type User struct {
 	EmailVerified  bool              `json:"email_verified" bson:"email_verified"`
 	FollowersCount int               `json:"followerscount" bson:"followerscount"`
 	FollowingCount int               `json:"followscount" bson:"followscount"`
+	WalletBalance  float64           `bson:"wallet_balance" json:"wallet_balance"`
 }
 
 // UserProfileResponse defines the structure for the user profile response
@@ -55,6 +56,12 @@ type UserFollow struct {
 	UserID    string   `json:"userid" bson:"userid"`
 	Follows   []string `json:"follows,omitempty" bson:"follows,omitempty"`
 	Followers []string `json:"followers,omitempty" bson:"followers,omitempty"`
+}
+
+type UserSubscribe struct {
+	UserID      string   `json:"userid" bson:"userid"`
+	Subscribed  []string `json:"subscribed,omitempty" bson:"subscribed,omitempty"`   // users this user is subscribed to
+	Subscribers []string `json:"subscribers,omitempty" bson:"subscribers,omitempty"` // users who subscribed to this user
 }
 
 type UserData struct {
@@ -91,7 +98,7 @@ type FeedPost struct {
 	Type        string               `bson:"type" json:"type"`
 	Media       []string             `bson:"media" json:"media"`
 	Timestamp   string               `bson:"timestamp" json:"timestamp"`
-	Likes       int                  `bson:"likes" json:"likes"`
+	Likes       int64                `bson:"likes" json:"likes"`
 	Content     string               `json:"content" bson:"content"`
 	MediaURL    []string             `json:"media_url,omitempty" bson:"media_url,omitempty"`
 	Likers      []primitive.ObjectID `json:"likers" bson:"likers"`
@@ -226,25 +233,25 @@ type Review struct {
 
 type Media struct {
 	MediaID       string             `json:"mediaid" bson:"mediaid"`
-	Type          string             `json:"type" bson:"type"`
-	URL           string             `json:"url" bson:"url"`
+	Type          string             `json:"type" bson:"type"` // "image", "video", "text"
+	URL           string             `json:"url,omitempty" bson:"url,omitempty"`
 	ThumbnailURL  string             `json:"thumbnailUrl,omitempty" bson:"thumbnailUrl,omitempty"`
-	Caption       string             `json:"caption" bson:"caption"`
+	Caption       string             `json:"caption,omitempty" bson:"caption,omitempty"`
 	Description   string             `json:"description,omitempty" bson:"description,omitempty"`
 	CreatorID     string             `json:"creatorid" bson:"creatorid"`
 	LikesCount    int                `json:"likesCount" bson:"likesCount"`
 	CommentsCount int                `json:"commentsCount" bson:"commentsCount"`
-	Visibility    string             `json:"visibility" bson:"visibility"`
-	Tags          []string           `json:"tags,omitempty" bson:"tags,omitempty"`
+	Visibility    string             `json:"visibility,omitempty" bson:"visibility,omitempty"`
+	Tags          []string           `json:"tags,omitempty" bson:"tags,omitempty"` // e.g., song:123, event:456
 	Duration      float64            `json:"duration,omitempty" bson:"duration,omitempty"`
 	FileSize      int64              `json:"fileSize,omitempty" bson:"fileSize,omitempty"`
 	MimeType      string             `json:"mimeType,omitempty" bson:"mimeType,omitempty"`
 	IsFeatured    bool               `json:"isFeatured,omitempty" bson:"isFeatured,omitempty"`
 	EntityID      string             `json:"entityid" bson:"entityid"`
-	EntityType    string             `json:"entitytype" bson:"entitytype"` // "event" or "place""video"
-	CreatedAt     time.Time          `json:"created_at" bson:"created_at"`
-	UserID        primitive.ObjectID `bson:"user_id" json:"userId"`
-	UpdatedAt     time.Time          `bson:"updated_at" json:"updatedAt"`
+	EntityType    string             `json:"entitytype" bson:"entitytype"` // "event", "place", etc.
+	CreatedAt     time.Time          `json:"createdAt" bson:"createdAt"`
+	UpdatedAt     time.Time          `json:"updatedAt" bson:"updatedAt"`
+	UserID        primitive.ObjectID `json:"userId" bson:"user_id"`
 }
 
 type Place struct {
@@ -350,13 +357,6 @@ type Business struct {
 	Type        string             `json:"type" bson:"type"`
 	Location    string             `json:"location" bson:"location"`
 	Description string             `json:"description" bson:"description"`
-}
-
-type Booking struct {
-	ID         primitive.ObjectID `json:"id,omitempty" bson:"_id,omitempty"`
-	BusinessID primitive.ObjectID `json:"business_id" bson:"business_id"`
-	UserID     string             `json:"user_id" bson:"user_id"`
-	TimeSlot   string             `json:"time_slot" bson:"time_slot"`
 }
 
 type MenuItem struct {

@@ -2,12 +2,7 @@ package globals
 
 import (
 	"context"
-	"naevis/db"
-	"naevis/rdx"
 	"time"
-
-	"github.com/redis/go-redis/v9"
-	"go.mongodb.org/mongo-driver/mongo"
 )
 
 const (
@@ -20,16 +15,10 @@ var (
 	JwtSecret = []byte("your_secret_key") // Replace with a secure secret key
 )
 
+// Context keys
 type ContextKey string
 
+const RoleKey ContextKey = "role"
 const UserIDKey ContextKey = "userId"
 
-var CTX = context.Background()
-
-var RedisClient *redis.Client = rdx.Conn
-var MongoClient *mongo.Client = db.Client
-
-// Context keys
-type contextKey string
-
-const RoleKey contextKey = "role"
+var Ctx = context.Background()

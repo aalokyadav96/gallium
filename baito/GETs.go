@@ -8,7 +8,6 @@ import (
 	"naevis/utils"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/julienschmidt/httprouter"
 	"go.mongodb.org/mongo-driver/bson"
@@ -17,21 +16,24 @@ import (
 )
 
 func GetWorkers(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
+	// ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	// defer cancel()
+
+	ctx := r.Context()
 
 	search := strings.TrimSpace(r.URL.Query().Get("search"))
 	skill := strings.TrimSpace(r.URL.Query().Get("skill"))
-
+	log.Println("hi")
 	filter := bson.M{}
 	if search != "" {
 		filter["$or"] = bson.A{
 			utils.RegexFilter("name", search),
 			utils.RegexFilter("address", search),
+			utils.RegexFilter("bio", search),
 		}
 	}
 	if skill != "" {
-		filter["preferred_roles"] = skill
+		filter["preferred_roles"] = bson.M{"$in": []string{skill}}
 	}
 
 	skip, limit := utils.ParsePagination(r, 10, 100)
@@ -61,7 +63,7 @@ func GetLatestBaitos(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 	cursor, err := db.BaitoCollection.Find(ctx, bson.M{}, opts)
 	if err != nil {
 		log.Printf("DB error: %v", err)
-		respondError(w, http.StatusInternalServerError, "Database error")
+		utils.RespondWithError(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 
@@ -72,13 +74,13 @@ func GetRelatedBaitos(w http.ResponseWriter, r *http.Request, _ httprouter.Param
 	GetLatestBaitos(w, r, nil)
 }
 
-// Replaces generic function: explicitly for baito slice
+// Explicitly decode baitos (no generics)
 func findAndRespondBaitos(ctx context.Context, w http.ResponseWriter, cursor *mongo.Cursor) {
 	defer cursor.Close(ctx)
 	var results []models.BaitosResponse
 	if err := cursor.All(ctx, &results); err != nil {
 		log.Printf("Cursor decode error: %v", err)
-		respondError(w, http.StatusInternalServerError, "Failed to parse results")
+		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to parse results")
 		return
 	}
 
@@ -86,5 +88,5 @@ func findAndRespondBaitos(ctx context.Context, w http.ResponseWriter, cursor *mo
 		results = []models.BaitosResponse{}
 	}
 
-	respondJSON(w, http.StatusOK, results)
+	utils.RespondWithJSON(w, http.StatusOK, results)
 }

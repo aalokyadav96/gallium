@@ -3,12 +3,10 @@ package models
 import "time"
 
 type Block struct {
-	Type        string `bson:"type" json:"type"`
-	Content     string `bson:"content,omitempty" json:"content,omitempty"`
-	URL         string `bson:"url,omitempty" json:"url,omitempty"`
-	Placeholder string `bson:"placeholder,omitempty" json:"placeholder,omitempty"`
-	Alt         string `bson:"alt,omitempty" json:"alt,omitempty"`
-	TempID      string `bson:"tempId,omitempty" json:"tempId,omitempty"`
+	Type    string `bson:"type" json:"type"`
+	Content string `bson:"content,omitempty" json:"content,omitempty"`
+	URL     string `bson:"url,omitempty" json:"url,omitempty"`
+	Alt     string `bson:"alt,omitempty" json:"alt,omitempty"`
 }
 
 type BlogPost struct {

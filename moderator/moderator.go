@@ -1,4 +1,4 @@
-package admin
+package moderator
 
 import (
 	"context"
@@ -12,15 +12,8 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
-// GetReports returns all non‐resolved reports for the admin UI.
-//
-// Endpoint: GET /admin/reports
-//
-// Response: 200 OK [ { …Report fields… }, { … } … ]
-// Reports with status == "resolved" are excluded.
-
 func GetReports(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	// Filter out reports whose status is either "resolved" or "rejected"
+
 	filter := bson.M{
 		"status": bson.M{
 			"$nin": []string{"resolved", "rejected"},
@@ -41,5 +34,5 @@ func GetReports(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(reports)
+	_ = json.NewEncoder(w).Encode(reports)
 }

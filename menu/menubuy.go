@@ -25,7 +25,7 @@ func CreateMenuPaymentSession(w http.ResponseWriter, r *http.Request, ps httprou
 
 	// Parse request body for stock
 	var body struct {
-		Stock int `json:"stock"`
+		Stock int `json:"quantity"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Stock < 1 {
 		http.Error(w, "Invalid request or stock", http.StatusBadRequest)
@@ -78,7 +78,7 @@ func BroadcastMenuUpdate(placeId, menuId string, remainingMenus int) {
 type MenuPurchaseRequest struct {
 	MenuID  string `json:"menuId"`
 	PlaceId string `json:"placeId"`
-	Stock   int    `json:"stock"`
+	Stock   int    `json:"quantity"`
 }
 
 // MenuPurchaseResponse represents the response body for menu purchase confirmation

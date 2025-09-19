@@ -49,7 +49,7 @@ func UploadImages(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 			return
 		}
 
-		publicPath := "/static/uploads/" + filename
+		publicPath := "/uploads/" + filename
 		savedPaths = append(savedPaths, publicPath)
 	}
 

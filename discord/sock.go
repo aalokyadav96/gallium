@@ -1,13 +1,16 @@
 package discord
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"sync"
 	"time"
 
 	"naevis/db"
-	"naevis/utils"
+	"naevis/middleware"
 
 	"github.com/gorilla/websocket"
 	"github.com/julienschmidt/httprouter"
@@ -16,8 +19,6 @@ import (
 )
 
 var (
-	// ctx = context.Background()
-
 	clients = struct {
 		sync.RWMutex
 		m map[string]*websocket.Conn
@@ -28,11 +29,23 @@ var (
 	}
 )
 
-// HandleWebSocket (updated parts)
-// Replace the message-handling switch (or integrate these changes into your existing function)
+// HandleWebSocket manages connections & messages
 func HandleWebSocket(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	userID := utils.GetUserIDFromRequest(r)
-	log.Println("=================================", userID)
+	ctx := r.Context()
+	// userID := utils.GetUserIDFromRequest(r)
+
+	var token = "Bearer " + r.URL.Query().Get("token")
+	claims, err := middleware.ValidateJWT(token)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	userID := claims.UserID
+	log.Println("-------------------------", userID)
+
+	log.Println("-_-_-__--__-____--_------_--______-_-_ : ", userID)
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println("WebSocket upgrade failed:", err)
@@ -52,7 +65,7 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 		log.Println("WS disconnected:", userID)
 	}()
 
-	// ping ticker (unchanged)
+	// ping ticker
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
@@ -65,16 +78,7 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 	}()
 
 	for {
-		var in struct {
-			Type      string `json:"type"`
-			ChatID    string `json:"chatId"`
-			Content   string `json:"content"`
-			MediaURL  string `json:"mediaUrl"`
-			MediaType string `json:"mediaType"`
-			Online    bool   `json:"online"`
-			ClientID  string `json:"clientId,omitempty"`
-		}
-
+		var in IncomingWSMessage
 		if err := conn.ReadJSON(&in); err != nil {
 			log.Printf("Read error from %s: %v", userID, err)
 			break
@@ -88,14 +92,12 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 				break
 			}
 
-			msg, err := persistMessage(cid, userID, in.Content, in.MediaURL, in.MediaType)
+			msg, err := persistMessage(ctx, cid, userID, in.Content, in.MediaURL, in.MediaType)
 			if err != nil {
 				log.Printf("Failed to persist message from %s: %v", userID, err)
 				break
 			}
 
-			// Broadcast a flattened payload that the frontend expects.
-			// Include clientId if provided so the client can reconcile pending messages.
 			payload := map[string]interface{}{
 				"type":      "message",
 				"id":        msg.ID.Hex(),
@@ -108,11 +110,10 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 				payload["clientId"] = in.ClientID
 			}
 
-			broadcastToChat(in.ChatID, payload)
+			broadcastToChat(ctx, in.ChatID, payload)
 
 		case "typing":
-			// broadcast with 'sender' key to match frontend expectations
-			broadcastToChat(in.ChatID, map[string]interface{}{
+			broadcastToChat(ctx, in.ChatID, map[string]interface{}{
 				"type":   "typing",
 				"sender": userID,
 				"chatId": in.ChatID,
@@ -131,8 +132,12 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request, ps httprouter.Param
 	}
 }
 
-// Broadcast to all chat participants (safe)
-func broadcastToChat(chatHex string, payload interface{}) {
+//
+// ==== Broadcasting ====
+//
+
+// Broadcast to all chat participants
+func broadcastToChat(ctx context.Context, chatHex string, payload interface{}) {
 	cid, err := primitive.ObjectIDFromHex(chatHex)
 	if err != nil {
 		log.Printf("Invalid chatHex in broadcast: %v", chatHex)
@@ -145,7 +150,6 @@ func broadcastToChat(chatHex string, payload interface{}) {
 		return
 	}
 
-	// Gather recipients under read lock
 	clients.RLock()
 	peers := make([]*websocket.Conn, 0, len(chat.Participants))
 	for _, p := range chat.Participants {
@@ -155,11 +159,9 @@ func broadcastToChat(chatHex string, payload interface{}) {
 	}
 	clients.RUnlock()
 
-	// Write to each safely
 	for _, conn := range peers {
 		if err := conn.WriteJSON(payload); err != nil {
 			conn.Close()
-			// Remove closed connection
 			clients.Lock()
 			for uid, c := range clients.m {
 				if c == conn {
@@ -172,7 +174,7 @@ func broadcastToChat(chatHex string, payload interface{}) {
 	}
 }
 
-// Broadcast to all connected users (presence updates, etc.)
+// Broadcast to all connected users
 func broadcastGlobal(payload interface{}) {
 	clients.RLock()
 	conns := make(map[string]*websocket.Conn, len(clients.m))
@@ -189,4 +191,63 @@ func broadcastGlobal(payload interface{}) {
 			clients.Unlock()
 		}
 	}
+}
+
+//
+// ==== Persistence ====
+//
+
+func persistMediaMessage(ctx context.Context, chatID primitive.ObjectID, sender, mediaURL, mediaType string) (*Message, error) {
+	return persistMessage(ctx, chatID, sender, "", mediaURL, mediaType)
+}
+
+func persistMessage(ctx context.Context, chatID primitive.ObjectID, sender, content, mediaURL, mediaType string) (*Message, error) {
+	if content == "" && mediaURL == "" {
+		return nil, errors.New("empty content and media")
+	}
+
+	var media *Media
+	if mediaURL != "" && mediaType != "" {
+		media = &Media{
+			URL:  mediaURL,
+			Type: mediaType,
+		}
+	}
+
+	msg := &Message{
+		ChatID:    chatID,
+		Sender:    sender,
+		Content:   content,
+		Media:     media,
+		CreatedAt: time.Now(),
+	}
+
+	res, err := db.MessagesCollection.InsertOne(ctx, msg)
+	if err != nil {
+		return nil, err
+	}
+	msg.ID = res.InsertedID.(primitive.ObjectID)
+
+	db.ChatsCollection.UpdateOne(ctx,
+		bson.M{"_id": chatID},
+		bson.M{"$set": bson.M{"updatedAt": time.Now()}},
+	)
+
+	return msg, nil
+}
+
+//
+// ==== Helpers ====
+//
+
+func parseInt64(s string) (int64, error) {
+	var v int64
+	if err := json.Unmarshal([]byte(s), &v); err != nil {
+		return 0, err
+	}
+	return v, nil
+}
+
+func writeErr(w http.ResponseWriter, msg string, code int) {
+	http.Error(w, msg, code)
 }

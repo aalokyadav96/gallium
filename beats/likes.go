@@ -24,6 +24,10 @@ func redisLikeKey(entityType, entityID string) string {
 	return "like:count:" + entityType + ":" + entityID
 }
 
+func HowManyLikes(entityType string, entityID string) string {
+	return redisLikeKey(entityType, entityID)
+}
+
 // ToggleLike handles POST /likes/:entitytype/like/:entityid
 func ToggleLike(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

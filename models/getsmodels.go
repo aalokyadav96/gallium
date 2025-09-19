@@ -16,6 +16,8 @@ type PlacesResponse struct {
 	Banner         string   `json:"banner"`
 }
 
+/* ---------- MODELS ---------- */
+
 type BaitosResponse struct {
 	BaitoId      string    `bson:"baitoid,omitempty" json:"baitoid"`
 	Title        string    `bson:"title" json:"title"`
@@ -35,9 +37,12 @@ type BaitoWorkersResponse struct {
 	UserID      string    `json:"userid" bson:"userid"`
 	BaitoUserID string    `json:"baito_user_id" bson:"baito_user_id"`
 	Name        string    `json:"name" bson:"name"`
-	Preferred   string    `json:"preferred_roles" bson:"preferred_roles"`
+	Age         int       `json:"age" bson:"age"`
+	Phone       string    `json:"phone_number" bson:"phone_number"`
+	Location    string    `json:"address" bson:"address"`
+	Preferred   []string  `json:"preferred_roles" bson:"preferred_roles"`
 	Bio         string    `json:"bio" bson:"bio"`
-	ProfilePic  string    `json:"profile_picture" bson:"profile_picture"`
+	ProfilePic  string    `json:"photo" bson:"photo"`
 	CreatedAt   time.Time `json:"created_at" bson:"created_at"`
 }
 

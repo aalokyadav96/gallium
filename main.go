@@ -10,6 +10,9 @@ import (
 	"syscall"
 	"time"
 
+	"naevis/middleware"
+	"naevis/mq"
+	"naevis/newchat"
 	"naevis/ratelim"
 	"naevis/routes"
 
@@ -17,35 +20,6 @@ import (
 	"github.com/julienschmidt/httprouter"
 	"github.com/rs/cors"
 )
-
-// securityHeaders applies a set of recommended HTTP security headers.
-func securityHeaders(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// XSS, content sniffing, framing
-		w.Header().Set("X-XSS-Protection", "1; mode=block")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
-		// HSTS (must be on HTTPS)
-		w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
-		// Referrer and permissions
-		w.Header().Set("Referrer-Policy", "no-referrer")
-		w.Header().Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
-		// Prevent caching
-		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, private")
-		next.ServeHTTP(w, r)
-	})
-}
-
-// loggingMiddleware logs each request method, path, remote address, and duration.
-func loggingMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		next.ServeHTTP(w, r)
-		duration := time.Since(start)
-		log.Printf("%s %s from %s – %v", r.Method, r.RequestURI, r.RemoteAddr, duration)
-	})
-}
 
 // Index is a simple health check handler.
 func Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
@@ -57,45 +31,8 @@ func Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 func setupRouter(rateLimiter *ratelim.RateLimiter) *httprouter.Router {
 	router := httprouter.New()
 	router.GET("/health", Index)
-
-	routes.AddActivityRoutes(router, rateLimiter)
-	routes.AddAdminRoutes(router, rateLimiter)
-	routes.AddAdsRoutes(router, rateLimiter)
-	routes.AddArtistRoutes(router, rateLimiter)
-	routes.AddBaitoRoutes(router, rateLimiter)
-	routes.AddBeatRoutes(router, rateLimiter)
-	routes.AddBookingRoutes(router, rateLimiter)
-	routes.AddAuthRoutes(router, rateLimiter)
-	routes.AddCartRoutes(router, rateLimiter)
-	// chat routes are added in main
-	routes.AddDiscordRoutes(router, rateLimiter)
-	routes.AddCommentsRoutes(router, rateLimiter)
-	routes.AddEventsRoutes(router, rateLimiter)
-	routes.RegisterFarmRoutes(router, rateLimiter)
-	routes.AddFeedRoutes(router, rateLimiter)
-	routes.AddHomeRoutes(router, rateLimiter)
-	routes.AddItineraryRoutes(router, rateLimiter)
-	routes.AddMapRoutes(router, rateLimiter)
-	routes.AddMediaRoutes(router, rateLimiter)
-	routes.AddMerchRoutes(router, rateLimiter)
-	routes.AddBannerRoutes(router, rateLimiter)
-	routes.AddPayRoutes(router, rateLimiter)
-	routes.AddPlaceRoutes(router, rateLimiter)
-	routes.AddPlaceTabRoutes(router, rateLimiter)
-	routes.AddPostRoutes(router, rateLimiter)
-	routes.AddProductRoutes(router, rateLimiter)
-	routes.AddProfileRoutes(router, rateLimiter)
-	routes.AddRecipeRoutes(router, rateLimiter)
-	routes.AddReportRoutes(router, rateLimiter)
-	routes.AddReviewsRoutes(router, rateLimiter)
-	routes.AddSearchRoutes(router, rateLimiter)
-	routes.AddSettingsRoutes(router, rateLimiter)
 	routes.AddStaticRoutes(router)
-	routes.AddSuggestionsRoutes(router, rateLimiter)
-	routes.AddTicketRoutes(router, rateLimiter)
-	routes.AddUtilityRoutes(router, rateLimiter)
-	routes.AddMiscRoutes(router, rateLimiter)
-
+	routes.RoutesWrapper(router, rateLimiter)
 	return router
 }
 
@@ -116,18 +53,23 @@ func main() {
 	// initialize rate limiter
 	rateLimiter := ratelim.NewRateLimiter(1, 6, 10*time.Minute, 10000)
 
+	// initialize chat hub
+	hub := newchat.NewHub()
+	go hub.Run()
+
 	// build router and add chat routes with hub
 	router := setupRouter(rateLimiter)
+	routes.AddNewChatRoutes(router, hub, rateLimiter)
 
 	// apply middleware: CORS → security headers → logging → router
 	corsHandler := cors.New(cors.Options{
 		AllowedOrigins:   []string{"*"}, // lock down in production
 		AllowedMethods:   []string{"HEAD", "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Content-Type", "Authorization"},
+		AllowedHeaders:   []string{"Content-Type", "Authorization", "Idempotency-Key"},
 		AllowCredentials: true,
 	}).Handler(router)
 
-	handler := loggingMiddleware(securityHeaders(corsHandler))
+	handler := middleware.LoggingMiddleware(middleware.SecurityHeaders(corsHandler))
 
 	// create HTTP server
 	server := &http.Server{
@@ -140,11 +82,13 @@ func main() {
 	}
 
 	// start indexing worker in background
-	// go mq.StartIndexingWorker()
+	go mq.StartIndexingWorker()
+	go mq.StartHashtagWorker()
 
 	// on shutdown: stop chat hub, cleanup
 	server.RegisterOnShutdown(func() {
 		log.Println("🛑 Shutting down...")
+		hub.Stop()
 	})
 
 	// start server

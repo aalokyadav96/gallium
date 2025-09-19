@@ -18,14 +18,18 @@ import (
 	"github.com/disintegration/imaging"
 )
 
-const defaultThumbWidth = 200
+const (
+	defaultThumbWidth = 500
+	maxUploadSize     = 10 << 20 // 10 MB
+	defaultQuality    = 85
+)
 
 // SaveFileForEntity saves file and triggers image/video processing.
 func SaveFileForEntity(file multipart.File, header *multipart.FileHeader, entity EntityType, picType PictureType) (string, error) {
 	defer file.Close()
 
 	path := ResolvePath(entity, picType)
-	filename, err := SaveFile(file, header, path, 10<<20, nil)
+	filename, err := SaveFile(file, header, path, maxUploadSize, nil)
 	if err != nil {
 		return "", err
 	}
@@ -33,6 +37,7 @@ func SaveFileForEntity(file multipart.File, header *multipart.FileHeader, entity
 	fullPath := filepath.Join(path, filename)
 	ext := strings.ToLower(filepath.Ext(fullPath))
 
+	// Handle images
 	if isImageType(picType) {
 		f, err := os.Open(fullPath)
 		if err != nil {
@@ -47,39 +52,33 @@ func SaveFileForEntity(file multipart.File, header *multipart.FileHeader, entity
 			return filename, nil
 		}
 
-		if ext != ".png" {
-			pngPath := strings.TrimSuffix(fullPath, ext) + ".png"
-			out, err := os.Create(pngPath)
-			if err != nil {
-				return "", fmt.Errorf("create png %s: %w", pngPath, err)
-			}
-			if err := png.Encode(out, img); err != nil {
-				_ = out.Close()
-				_ = os.Remove(pngPath)
-				return "", fmt.Errorf("encode png: %w", err)
-			}
-			_ = out.Close()
-			_ = os.Remove(fullPath)
-			fullPath = pngPath
-			filename = filepath.Base(pngPath)
+		// Normalize to PNG
+		newPath, err := normalizeImageFormat(fullPath, ext, img)
+		if err != nil {
+			return "", err
+		}
+		if newPath != fullPath {
+			fullPath = newPath
+			filename = filepath.Base(newPath)
 			ext = ".png"
 		}
 
+		// MQ notify
 		go func(p, ent, fname string, pt string) {
 			_ = mq.NotifyImageSaved(p, ent, fname, pt, "")
 		}(fullPath, string(entity), filename, string(picType))
 
-		if img.Bounds().Dx() > defaultThumbWidth || img.Bounds().Dy() > defaultThumbWidth {
-			imgCopy := imaging.Clone(img)
-			go func(img image.Image, ent EntityType, fname string) {
-				if err := generateThumbnail(img, ent, fname, defaultThumbWidth); err != nil {
-					if LogFunc != nil {
-						LogFunc(fmt.Sprintf("warning: thumbnail failed for %s: %v", fname, err), 0, "")
-					}
+		// Thumbnail
+		imgCopy := imaging.Clone(img)
+		go func(img image.Image, ent EntityType, fname string) {
+			if err := generateThumbnail(img, ent, fname, defaultThumbWidth); err != nil {
+				if LogFunc != nil {
+					LogFunc(fmt.Sprintf("warning: thumbnail failed for %s: %v", fname, err), 0, "")
 				}
-			}(imgCopy, entity, filename)
-		}
+			}
+		}(imgCopy, entity, filename)
 
+		// Metadata extraction
 		go func(img image.Image, uid string) {
 			if err := ExtractImageMetadata(img, uid); err != nil {
 				if LogFunc != nil {
@@ -94,6 +93,7 @@ func SaveFileForEntity(file multipart.File, header *multipart.FileHeader, entity
 		return filename, nil
 	}
 
+	// Handle videos
 	if picType == PicVideo || isVideoExt(ext) {
 		go func(vpath string, ent EntityType, fname string) {
 			if thumb, err := generateVideoPoster(vpath, ent, fname); err != nil {
@@ -115,6 +115,28 @@ func SaveFileForEntity(file multipart.File, header *multipart.FileHeader, entity
 }
 
 // --- Utility functions for images/videos ---
+
+// normalizeImageFormat re-encodes non-PNG images into PNG
+func normalizeImageFormat(fullPath, ext string, img image.Image) (string, error) {
+	if ext == ".png" {
+		return fullPath, nil
+	}
+	pngPath := strings.TrimSuffix(fullPath, ext) + ".png"
+	out, err := os.Create(pngPath)
+	if err != nil {
+		return fullPath, fmt.Errorf("create png %s: %w", pngPath, err)
+	}
+	if err := png.Encode(out, img); err != nil {
+		_ = out.Close()
+		_ = os.Remove(pngPath)
+		return fullPath, fmt.Errorf("encode png: %w", err)
+	}
+	_ = out.Close()
+	_ = os.Remove(fullPath)
+	return pngPath, nil
+}
+
+// generateThumbnail creates a JPEG thumbnail for an image
 func generateThumbnail(img image.Image, entity EntityType, baseFilename string, thumbWidth int) error {
 	resized := imaging.Resize(img, thumbWidth, 0, imaging.Lanczos)
 	name := strings.TrimSuffix(baseFilename, filepath.Ext(baseFilename)) + ".jpg"
@@ -126,7 +148,7 @@ func generateThumbnail(img image.Image, entity EntityType, baseFilename string, 
 	if err != nil {
 		return fmt.Errorf("create thumbnail: %w", err)
 	}
-	if err := jpeg.Encode(out, resized, &jpeg.Options{Quality: 85}); err != nil {
+	if err := jpeg.Encode(out, resized, &jpeg.Options{Quality: defaultQuality}); err != nil {
 		_ = out.Close()
 		_ = os.Remove(path)
 		return fmt.Errorf("encode thumbnail: %w", err)
@@ -138,6 +160,7 @@ func generateThumbnail(img image.Image, entity EntityType, baseFilename string, 
 	return nil
 }
 
+// generateVideoPoster extracts a poster frame from a video
 func generateVideoPoster(videoPath string, entity EntityType, baseFilename string) (string, error) {
 	thumbName := strings.TrimSuffix(baseFilename, filepath.Ext(baseFilename)) + ".jpg"
 	thumbDir := ResolvePath(entity, PicThumb)
@@ -147,14 +170,13 @@ func generateVideoPoster(videoPath string, entity EntityType, baseFilename strin
 	}
 
 	var ts float64 = 0.5
-	cmdProbe := exec.Command("ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", videoPath)
+	cmdProbe := exec.Command("ffprobe", "-v", "error", "-show_entries", "format=duration",
+		"-of", "default=noprint_wrappers=1:nokey=1", videoPath)
 	if out, err := cmdProbe.Output(); err == nil {
 		s := strings.TrimSpace(string(out))
 		if s != "" {
 			if d, err := strconv.ParseFloat(s, 64); err == nil && d > 0 {
-				if d >= 2.0 {
-					ts = d / 2.0
-				} else if d >= 0.5 {
+				if d >= 0.5 {
 					ts = d / 2.0
 				} else {
 					ts = 0.0

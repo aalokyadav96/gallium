@@ -3,14 +3,12 @@ package merch
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"naevis/db"
 	"naevis/globals"
 	"naevis/models"
 	"naevis/mq"
 	"naevis/stripe"
-	"naevis/tickets"
 	"naevis/userdata"
 	"net/http"
 
@@ -23,12 +21,12 @@ func CreateMerchPaymentSession(w http.ResponseWriter, r *http.Request, ps httpro
 	merchId := ps.ByName("merchid")
 	eventId := ps.ByName("eventid")
 
-	// Parse request body for stock
+	// Parse request body for quantity
 	var body struct {
-		Stock int `json:"stock"`
+		Stock int `json:"quantity"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Stock < 1 {
-		http.Error(w, "Invalid request or stock", http.StatusBadRequest)
+		http.Error(w, "Invalid request or quantity", http.StatusBadRequest)
 		return
 	}
 
@@ -40,161 +38,92 @@ func CreateMerchPaymentSession(w http.ResponseWriter, r *http.Request, ps httpro
 		return
 	}
 
-	// Respond with the session URL
 	dataResponse := map[string]any{
 		"paymentUrl": session.URL,
-		"eventid":    session.EventID,
-		"merchid":    session.MerchID,
-		"stock":      session.Stock,
+		"eventId":    session.EventID,
+		"merchId":    session.MerchID,
+		"quantity":   session.Stock,
 	}
 
-	// Respond with the session URL
 	response := map[string]any{
 		"success": true,
 		"data":    dataResponse,
 	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
 
-// BroadcastMerchUpdate sends real-time merch updates to subscribers
-func BroadcastMerchUpdate(eventId, merchId string, remainingMerchs int) {
-	update := map[string]any{
-		"type":            "merch_update",
-		"merchId":         merchId,
-		"remainingMerchs": remainingMerchs,
-	}
-	channel := tickets.GetUpdatesChannel(eventId)
-	select {
-	case channel <- update:
-		// Successfully sent update
-	default:
-		// If the channel is full, log a warning or handle the overflow
-		log.Printf("Warning: Updates channel for event %s is full. Dropping update.", eventId)
-	}
-}
-
-// MerchPurchaseRequest represents the request body for purchasing merchs
-type MerchPurchaseRequest struct {
-	MerchID string `json:"merchId"`
-	EventID string `json:"eventId"`
-	Stock   int    `json:"stock"`
-}
-
-// MerchPurchaseResponse represents the response body for merch purchase confirmation
-type MerchPurchaseResponse struct {
-	Message string `json:"message"`
-}
-
-// ProcessMerchPayment simulates the payment processing logic
-func ProcessMerchPayment(merchID, eventID string, stock int) bool {
-	// Implement actual payment processing logic (e.g., calling a payment gateway)
-	// For the sake of this example, we'll assume payment is always successful.
-	log.Printf("Processing payment for MerchID: %s, EventID: %s, Stock: %d", merchID, eventID, stock)
-	return true
-}
-
-// UpdateMerchStatus simulates updating the merch status in the database
-func UpdateMerchStatus(merchID, eventID string, stock int) error {
-	// Implement actual logic to update merch status in the database
-	log.Printf("Updating merch status for MerchID: %s, EventID: %s, Stock: %d", merchID, eventID, stock)
-	return nil
-}
-
-// ConfirmPurchase handles the POST request for confirming the merch purchase
+// POST /merch/event/:eventId/:merchId/confirm-purchase
 func ConfirmMerchPurchase(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	var request MerchPurchaseRequest
-	// Parse the incoming JSON request
-	err := json.NewDecoder(r.Body).Decode(&request)
-	if err != nil {
+	var request struct {
+		MerchID  string `json:"merchId"`
+		EventID  string `json:"eventId"`
+		Quantity int    `json:"quantity"`
+	}
+
+	// Parse JSON body
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.Quantity < 1 {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	// Retrieve the ID of the requesting user from the context
-	requestingUserID, ok := r.Context().Value(globals.UserIDKey).(string)
-	if !ok {
-		http.Error(w, "Invalid user", http.StatusBadRequest)
-		return
-	}
-
+	// Override IDs from URL params to prevent manipulation
 	request.EventID = ps.ByName("eventid")
 	request.MerchID = ps.ByName("merchid")
 
-	fmt.Println(request)
-	// Process the payment
-	paymentProcessed := ProcessMerchPayment(request.MerchID, request.EventID, request.Stock)
-
-	if paymentProcessed {
-		// Update the merch status in the database
-		err = UpdateMerchStatus(request.MerchID, request.EventID, request.Stock)
-		if err != nil {
-			http.Error(w, "Failed to update merch status", http.StatusInternalServerError)
-			return
-		}
-
-		// // Respond with a success message
-		// response := MerchPurchaseResponse{
-		// 	Message: "Payment successfully processed. Merch purchased.",
-		// }
-		// w.Header().Set("Content-Type", "application/json")
-		// w.WriteHeader(http.StatusOK)
-		// json.NewEncoder(w).Encode(response)
-		buyxMerch(w, request, requestingUserID)
-	} else {
-		// If payment failed, respond with a failure message
-		http.Error(w, "Payment failed", http.StatusBadRequest)
+	// Retrieve requesting user ID from context
+	userID, ok := r.Context().Value(globals.UserIDKey).(string)
+	if !ok || userID == "" {
+		http.Error(w, "Invalid user", http.StatusUnauthorized)
+		return
 	}
-}
 
-// Buy Merch
-
-func buyxMerch(w http.ResponseWriter, request MerchPurchaseRequest, requestingUserID string) {
-	eventID := request.EventID
-	merchID := request.MerchID
-	stockRequested := request.Stock
-
-	// Find the merch in the database
-	// collection := client.Database("eventdb").Collection("merch")
-	var merch models.Merch // Define the Merch struct based on your schema
-	err := db.MerchCollection.FindOne(context.TODO(), bson.M{"entity_id": eventID, "merchid": merchID}).Decode(&merch)
+	// Fetch merch from DB
+	var merch models.Merch
+	err := db.MerchCollection.FindOne(context.TODO(), bson.M{
+		"entity_id": request.EventID,
+		"merchid":   request.MerchID,
+	}).Decode(&merch)
 	if err != nil {
-		http.Error(w, "Merch not found or other error", http.StatusNotFound)
+		http.Error(w, "Merch not found", http.StatusNotFound)
 		return
 	}
 
-	// Check if there are enough merch available for purchase
-	if merch.Stock < stockRequested {
-		http.Error(w, "Not enough merch available for purchase", http.StatusBadRequest)
+	if merch.Stock < request.Quantity {
+		http.Error(w, "Not enough merch available", http.StatusBadRequest)
 		return
 	}
 
-	// Decrease the merch stock by the requested quantity
-	update := bson.M{"$inc": bson.M{"stock": -stockRequested}}
-	_, err = db.MerchCollection.UpdateOne(context.TODO(), bson.M{"entity_id": eventID, "merchid": merchID}, update)
+	// Deduct the purchased quantity atomically
+	update := bson.M{"$inc": bson.M{"stock": -request.Quantity}}
+	_, err = db.MerchCollection.UpdateOne(context.TODO(), bson.M{
+		"entity_id": request.EventID,
+		"merchid":   request.MerchID,
+	}, update)
 	if err != nil {
 		http.Error(w, "Failed to update merch stock", http.StatusInternalServerError)
 		return
 	}
 
-	userdata.SetUserData("merch", merchID, requestingUserID, merch.EntityType, merch.EntityID)
+	// Store user purchase data
+	userdata.SetUserData("merch", request.MerchID, userID, merch.EntityType, merch.EntityID)
 
-	m := models.Index{}
-	mq.Notify("merch-bought", m)
+	// Notify other services
+	mq.Notify("merch-bought", models.Index{})
 
-	// Respond with a success message
-	response := MerchPurchaseResponse{
-		Message: "Payment successfully processed. Merch purchased.",
+	// Respond with JSON success
+	resp := map[string]any{
+		"success": true,
+		"data": map[string]any{
+			"message":        "Merch purchased successfully",
+			"merchId":        request.MerchID,
+			"eventId":        request.EventID,
+			"quantityBought": request.Quantity,
+			"remainingStock": merch.Stock - request.Quantity,
+		},
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
 
-	// // Respond with success
-	// w.Header().Set("Content-Type", "application/json")
-	// w.WriteHeader(http.StatusOK)
-	// json.NewEncoder(w).Encode(map[string]any{
-	// 	"success": true,
-	// 	"message": fmt.Sprintf("Successfully purchased %d of %s", stockRequested, merch.Name),
-	// })
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }

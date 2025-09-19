@@ -161,6 +161,7 @@ func GetCropTypeFarms(w http.ResponseWriter, r *http.Request, ps httprouter.Para
 			}
 			listings = append(listings, models.CropListing{
 				FarmID:         crop.FarmID,
+				CropId:         crop.CropId,
 				FarmName:       farm.Name,
 				Location:       farm.Location,
 				Breed:          crop.Notes,

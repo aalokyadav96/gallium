@@ -140,17 +140,18 @@ func parseCropForm(r *http.Request) models.Crop {
 	cropName := r.FormValue("name")
 	formatted := strings.ToLower(strings.ReplaceAll(cropName, " ", "_"))
 	crop := models.Crop{
-		Name:       r.FormValue("name"),
-		Price:      utils.ParseFloat(r.FormValue("price")),
-		Quantity:   utils.ParseInt(r.FormValue("quantity")),
-		Unit:       r.FormValue("unit"),
-		Notes:      r.FormValue("notes"),
-		Category:   r.FormValue("category"),
-		Featured:   r.FormValue("featured") == "true",
-		OutOfStock: r.FormValue("outOfStock") == "true",
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
-		CropId:     formatted,
+		Name:        r.FormValue("name"),
+		Price:       utils.ParseFloat(r.FormValue("price")),
+		Quantity:    utils.ParseInt(r.FormValue("quantity")),
+		Unit:        r.FormValue("unit"),
+		Notes:       r.FormValue("notes"),
+		Category:    r.FormValue("category"),
+		Featured:    r.FormValue("featured") == "true",
+		OutOfStock:  r.FormValue("outOfStock") == "true",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+		CatalogueId: formatted,
+		CropId:      utils.GenerateRandomString(13),
 	}
 
 	if d := utils.ParseDate(r.FormValue("harvestDate")); d != nil {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"naevis/db"
 	"naevis/globals"
@@ -47,40 +46,19 @@ func GetUpdatesChannel(eventId string) chan map[string]any {
 	return newCh
 }
 
-// POST /ticket/event/:eventId/:ticketId/payment-session
+// POST /ticket/event/:eventid/:ticketid/payment-session
 func CreateTicketPaymentSession(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	ticketId := ps.ByName("ticketid")
 	eventId := ps.ByName("eventid")
 
-	// Ensure Content-Type is application/json
-	if r.Header.Get("Content-Type") != "application/json" {
-		http.Error(w, "Invalid Content-Type, expected application/json", http.StatusUnsupportedMediaType)
-		return
-	}
-
-	// Read request body safely
-	bodyBytes, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusBadRequest)
-		return
-	}
-	defer r.Body.Close() // Close body after reading
-
-	// Debugging: Print raw request body
-	fmt.Println("Raw Body:", string(bodyBytes))
-
-	// Parse request body into struct
+	// Parse request body for quantity
 	var body struct {
 		Quantity int `json:"quantity"`
 	}
-
-	if err := json.Unmarshal(bodyBytes, &body); err != nil || body.Quantity < 1 {
-		fmt.Println("Error decoding JSON:", err)
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Quantity < 1 {
 		http.Error(w, "Invalid request or quantity", http.StatusBadRequest)
 		return
 	}
-
-	fmt.Printf("Decoded Body: %+v\n", body) // Debugging
 
 	// Generate a Stripe payment session
 	session, err := stripe.CreateTicketSession(ticketId, eventId, body.Quantity)
@@ -90,15 +68,16 @@ func CreateTicketPaymentSession(w http.ResponseWriter, r *http.Request, ps httpr
 		return
 	}
 
-	// Respond with session details
+	dataResponse := map[string]any{
+		"paymentUrl": session.URL,
+		"eventId":    session.EventID,
+		"ticketId":   session.TicketID,
+		"stock":      session.Quantity,
+	}
+
 	response := map[string]any{
 		"success": true,
-		"data": map[string]any{
-			"paymentUrl": session.URL,
-			"eventid":    session.EventID,
-			"ticketid":   session.TicketID,
-			"quantity":   session.Quantity,
-		},
+		"data":    dataResponse,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -185,123 +164,136 @@ func UpdateTicketStatus(ticketID, eventID string, quantity int) error {
 	return nil
 }
 
-// ConfirmPurchase handles the POST request for confirming the ticket purchase
+// ConfirmTicketPurchase handles the POST request for confirming the ticket purchase
 func ConfirmTicketPurchase(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	var request TicketPurchaseRequest
 
-	// Parse the incoming JSON request
-	err := json.NewDecoder(r.Body).Decode(&request)
-	if err != nil {
+	// Parse JSON body
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	// Process the payment
-	paymentProcessed := ProcessTicketPayment(request.TicketID, request.EventID, request.Quantity)
-
-	if paymentProcessed {
-		// Update the ticket status in the database
-		err = UpdateTicketStatus(request.TicketID, request.EventID, request.Quantity)
-		if err != nil {
-			http.Error(w, "Failed to update ticket status", http.StatusInternalServerError)
-			return
-		}
-
-		// // Respond with a success message
-		// response := TicketPurchaseResponse{
-		// 	Message: "Payment successfully processed. Ticket purchased.",
-		// }
-		// w.Header().Set("Content-Type", "application/json")
-		// w.WriteHeader(http.StatusOK)
-		// json.NewEncoder(w).Encode(response)
-		buyxTicket(w, r, request)
-	} else {
-		// If payment failed, respond with a failure message
+	// Process payment
+	if !ProcessTicketPayment(request.TicketID, request.EventID, request.Quantity) {
 		http.Error(w, "Payment failed", http.StatusBadRequest)
-	}
-}
-
-func buyxTicket(w http.ResponseWriter, r *http.Request, request TicketPurchaseRequest) {
-	eventID := request.EventID
-	ticketID := request.TicketID
-	quantityRequested := request.Quantity
-
-	requestingUserID, ok := r.Context().Value(globals.UserIDKey).(string)
-	if !ok {
-		http.Error(w, "Invalid user", http.StatusBadRequest)
 		return
 	}
 
+	// Update ticket status and store purchase
+	if err := UpdateTicketStatus(request.TicketID, request.EventID, request.Quantity); err != nil {
+		http.Error(w, "Failed to update ticket status", http.StatusInternalServerError)
+		return
+	}
+
+	// Complete ticket purchase
+	buyTicket(w, r, request)
+}
+
+// PurchaseTicket validates and deducts ticket quantity, returns generated ticket codes
+func PurchaseTicket(eventID, ticketID, userID string, quantity int) ([]string, error) {
 	var ticket models.Ticket
 	err := db.TicketsCollection.FindOne(context.TODO(), bson.M{"eventid": eventID, "ticketid": ticketID}).Decode(&ticket)
 	if err != nil {
-		http.Error(w, "Ticket not found or other error", http.StatusNotFound)
-		return
+		return nil, fmt.Errorf("ticket not found")
 	}
 
-	if ticket.Quantity < quantityRequested {
-		http.Error(w, "Not enough tickets available for purchase", http.StatusBadRequest)
-		return
+	if ticket.Quantity < quantity {
+		return nil, fmt.Errorf("not enough tickets available")
 	}
 
-	_, err = db.TicketsCollection.UpdateOne(context.TODO(),
+	// Deduct quantity
+	_, err = db.TicketsCollection.UpdateOne(
+		context.TODO(),
 		bson.M{"eventid": eventID, "ticketid": ticketID},
-		bson.M{"$inc": bson.M{"quantity": -quantityRequested}},
+		bson.M{"$inc": bson.M{"quantity": -quantity, "sold": quantity}},
 	)
 	if err != nil {
-		http.Error(w, "Failed to update ticket quantity", http.StatusInternalServerError)
-		return
+		return nil, fmt.Errorf("failed to update ticket quantity")
 	}
 
-	var purchasedDocs []interface{}
-	var userDataDocs []models.UserData
-	var uniqueCodes []string
+	// Generate unique codes
+	var codes []string
+	for i := 0; i < quantity; i++ {
+		codes = append(codes, utils.GetUUID())
+	}
+
+	return codes, nil
+}
+
+// StorePurchasedTickets inserts purchased tickets and user data into DB
+func StorePurchasedTickets(eventID, ticketID, userID string, codes []string) error {
+	if len(codes) == 0 {
+		return fmt.Errorf("no tickets to store")
+	}
+
 	now := time.Now()
 	createdAt := now.Format(time.RFC3339)
 
-	for i := 0; i < quantityRequested; i++ {
-		uniqueCode := utils.GetUUID()
-		uniqueCodes = append(uniqueCodes, uniqueCode)
+	var purchasedDocs []interface{}
+	var userDataDocs []models.UserData
 
+	for _, code := range codes {
 		purchasedDocs = append(purchasedDocs, models.PurchasedTicket{
 			EventID:      eventID,
 			TicketID:     ticketID,
-			UserID:       requestingUserID,
-			UniqueCode:   uniqueCode,
+			UserID:       userID,
+			UniqueCode:   code,
 			PurchaseDate: now,
 		})
 
 		userDataDocs = append(userDataDocs, models.UserData{
-			EntityID:   uniqueCode,
+			UserID:     userID,
+			EntityID:   code,
 			EntityType: "ticket",
-			UserID:     requestingUserID,
+			ItemID:     ticketID,
+			ItemType:   "ticket",
 			CreatedAt:  createdAt,
 		})
 	}
 
-	_, err = db.PurchasedTicketsCollection.InsertMany(context.TODO(), purchasedDocs)
+	_, err := db.PurchasedTicketsCollection.InsertMany(context.TODO(), purchasedDocs)
 	if err != nil {
-		http.Error(w, "Failed to store purchased tickets", http.StatusInternalServerError)
-		return
+		return fmt.Errorf("failed to store purchased tickets: %v", err)
 	}
 
 	userdata.AddUserDataBatch(userDataDocs)
-
 	mq.Notify("ticket-bought", models.Index{})
+	return nil
+}
 
-	response := struct {
+// Handler
+func buyTicket(w http.ResponseWriter, r *http.Request, request TicketPurchaseRequest) {
+	userID, ok := r.Context().Value(globals.UserIDKey).(string)
+	if !ok || userID == "" {
+		http.Error(w, "invalid user", http.StatusBadRequest)
+		return
+	}
+
+	codes, err := PurchaseTicket(request.EventID, request.TicketID, userID, request.Quantity)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := StorePurchasedTickets(request.EventID, request.TicketID, userID, codes); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	resp := struct {
 		Message     string   `json:"message"`
 		Success     string   `json:"success"`
 		UniqueCodes []string `json:"uniqueCodes"`
 	}{
 		Message:     "Payment successfully processed. Tickets purchased.",
 		Success:     "true",
-		UniqueCodes: uniqueCodes,
+		UniqueCodes: codes,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(resp)
 }
 
 // Get Available Seats

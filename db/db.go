@@ -17,6 +17,8 @@ var (
 	Client *mongo.Client
 	// Your collections:
 	AnalyticsCollection         *mongo.Collection
+	AccountsCollection          *mongo.Collection
+	AppealsCollection           *mongo.Collection
 	MapsCollection              *mongo.Collection
 	CartCollection              *mongo.Collection
 	OrderCollection             *mongo.Collection
@@ -25,11 +27,15 @@ var (
 	FarmOrdersCollection        *mongo.Collection
 	CropsCollection             *mongo.Collection
 	CommentsCollection          *mongo.Collection
+	HashtagCollection           *mongo.Collection
 	RoomsCollection             *mongo.Collection
 	UserCollection              *mongo.Collection
+	TransactionCollection       *mongo.Collection
 	LikesCollection             *mongo.Collection
 	ProductCollection           *mongo.Collection
+	IdempotencyCollection       *mongo.Collection
 	ItineraryCollection         *mongo.Collection
+	JournalCollection           *mongo.Collection
 	UserDataCollection          *mongo.Collection
 	TicketsCollection           *mongo.Collection
 	BehindTheScenesCollection   *mongo.Collection
@@ -39,6 +45,7 @@ var (
 	FollowingsCollection        *mongo.Collection
 	PlacesCollection            *mongo.Collection
 	SlotCollection              *mongo.Collection
+	DateCapsCollection          *mongo.Collection
 	ConfigsCollection           *mongo.Collection
 	BookingsCollection          *mongo.Collection
 	PostsCollection             *mongo.Collection
@@ -50,6 +57,7 @@ var (
 	EventsCollection            *mongo.Collection
 	ArtistEventsCollection      *mongo.Collection
 	SongsCollection             *mongo.Collection
+	CouponCollection            *mongo.Collection
 	MediaCollection             *mongo.Collection
 	ArtistsCollection           *mongo.Collection
 	ChatsCollection             *mongo.Collection
@@ -59,9 +67,13 @@ var (
 	ReportsCollection           *mongo.Collection
 	RecipeCollection            *mongo.Collection
 	BaitoCollection             *mongo.Collection
+	ModeratorApplications       *mongo.Collection
 	BaitoApplicationsCollection *mongo.Collection
 	BaitoWorkerCollection       *mongo.Collection
+	TiersCollection             *mongo.Collection
 	SearchCollection            *mongo.Collection
+	ServiceCollection           *mongo.Collection
+	SubscribersCollection       *mongo.Collection
 )
 
 // limiter chan to cap concurrent Mongo ops
@@ -110,8 +122,11 @@ func init() {
 	// Initialize your collections
 	db := Client.Database("eventdb")
 	dbx := Client.Database("naevis")
+	AccountsCollection = db.Collection("accounts")
 	ActivitiesCollection = db.Collection("activities")
 	AnalyticsCollection = db.Collection("analytics")
+	AnswerCollection = db.Collection("answers")
+	AppealsCollection = db.Collection("appeals")
 	ArtistEventsCollection = db.Collection("artistevents")
 	ArtistsCollection = db.Collection("artists")
 	BaitoApplicationsCollection = db.Collection("baitoapply")
@@ -125,37 +140,46 @@ func init() {
 	ChatsCollection = db.Collection("chats")
 	CommentsCollection = db.Collection("comments")
 	ConfigsCollection = db.Collection("configs")
+	CouponCollection = db.Collection("coupons")
 	CropsCollection = db.Collection("crops")
+	DateCapsCollection = db.Collection("date_caps")
 	EventsCollection = db.Collection("events")
 	FarmsCollection = db.Collection("farms")
 	PostsCollection = db.Collection("feedposts")
 	FilesCollection = db.Collection("files")
 	FollowingsCollection = db.Collection("followings")
 	FarmOrdersCollection = db.Collection("forders")
+	HashtagCollection = db.Collection("hashtags")
+	IdempotencyCollection = db.Collection("idempotency")
 	ItineraryCollection = db.Collection("itinerary")
+	JournalCollection = db.Collection("journals")
 	LikesCollection = db.Collection("likes")
 	MapsCollection = db.Collection("maps")
 	MediaCollection = db.Collection("media")
 	MenuCollection = db.Collection("menu")
 	MerchCollection = db.Collection("merch")
 	MessagesCollection = db.Collection("messages")
+	ModeratorApplications = db.Collection("modapps")
 	OrderCollection = db.Collection("orders")
 	PlacesCollection = db.Collection("places")
 	ProductCollection = db.Collection("products")
 	PurchasedTicketsCollection = db.Collection("purticks")
 	RecipeCollection = db.Collection("recipes")
 	QuestionCollection = db.Collection("questions")
-	AnswerCollection = db.Collection("answers")
 	ReportsCollection = db.Collection("reports")
 	ReviewsCollection = db.Collection("reviews")
 	RoomsCollection = db.Collection("rooms")
 	SettingsCollection = db.Collection("settings")
 	SlotCollection = db.Collection("slots")
 	SongsCollection = db.Collection("songs")
+	SubscribersCollection = db.Collection("subscribers")
+	TransactionCollection = db.Collection("transactions")
 	TicketsCollection = db.Collection("ticks")
+	TiersCollection = db.Collection("tiers")
 	UserDataCollection = db.Collection("userdata")
 	UserCollection = db.Collection("users")
 	SearchCollection = dbx.Collection("users")
+	ServiceCollection = db.Collection("service")
 }
 
 // logPoolStats logs basic goroutine and pool stats every 60s (optional)

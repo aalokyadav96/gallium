@@ -2,7 +2,6 @@ package routes
 
 import (
 	"naevis/activity"
-	"naevis/admin"
 	"naevis/ads"
 	"naevis/artists"
 	"naevis/auth"
@@ -15,7 +14,9 @@ import (
 	"naevis/discord"
 	"naevis/events"
 	"naevis/farms"
+	"naevis/feed"
 	"naevis/filemgr"
+	"naevis/hashtags"
 	"naevis/home"
 	"naevis/itinerary"
 	"naevis/maps"
@@ -24,7 +25,8 @@ import (
 	"naevis/merch"
 	"naevis/metadata"
 	"naevis/middleware"
-	"naevis/pay"
+	"naevis/moderator"
+	"naevis/newchat"
 	"naevis/places"
 	"naevis/posts"
 	"naevis/products"
@@ -40,7 +42,6 @@ import (
 	"naevis/userdata"
 	"naevis/utils"
 	"net/http"
-	_ "net/http/pprof"
 
 	"github.com/julienschmidt/httprouter"
 )
@@ -62,29 +63,46 @@ func AddActivityRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimit
 }
 
 func AddAdminRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
-	router.GET("/api/v1/admin/reports",
+
+	// Moderator-only endpoints
+	router.GET("/api/v1/moderator/reports",
 		middleware.Authenticate(
-			middleware.RequireRoles("admin")(
-				admin.GetReports,
+			middleware.RequireRoles("moderator")(
+				moderator.GetReports,
 			),
 		),
 	)
-}
 
-func AddPayRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
-	// router.GET("/api/v1/admin/reports", middleware.Authenticate(middleware.RequireRoles("user")(admin.GetReports)))
-	router.POST("/api/p1/wallets", pay.Handler)              // create wallet for user
-	router.GET("/api/p1/wallets/:id", pay.Handler)           // get wallet
-	router.GET("/api/p1/wallets/:id/balance", pay.Handler)   // get computed balance
-	router.POST("/api/p1/mint", pay.Handler)                 // admin mint -> wallet
-	router.POST("/api/p1/burn", pay.Handler)                 // admin burn <- wallet
-	router.POST("/api/p1/transfers", pay.Handler)            // move coins between wallets
-	router.POST("/api/p1/invoices", pay.Handler)             // create payment request
-	router.POST("/api/p1/invoices/:id/pay", pay.Handler)     // payer pays (hold or immediate)
-	router.POST("/api/p1/invoices/:id/capture", pay.Handler) // payee captures hold
-	router.POST("/api/p1/invoices/:id/cancel", pay.Handler)  // cancel invoice (release hold)
-	router.GET("/api/p1/ledger/:walletId", pay.Handler)      // paginated ledger
+	router.POST("/api/v1/moderator/apply",
+		rateLimiter.Limit(
+			middleware.Authenticate(moderator.ApplyModerator),
+		),
+	)
 
+	// Moderator-only: soft-delete entities
+	router.PUT("/api/v1/moderator/delete/:type/:id",
+		middleware.Authenticate(
+			middleware.RequireRoles("moderator")(
+				reports.SoftDeleteEntity,
+			),
+		),
+	)
+
+	// Moderator-only: appeals management (list + update)
+	router.GET("/api/v1/moderator/appeals",
+		middleware.Authenticate(
+			middleware.RequireRoles("moderator")(
+				reports.GetAppeals,
+			),
+		),
+	)
+	router.PUT("/api/v1/moderator/appeals/:id",
+		middleware.Authenticate(
+			middleware.RequireRoles("moderator")(
+				reports.UpdateAppeal,
+			),
+		),
+	)
 }
 
 func AddBaitoRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
@@ -128,6 +146,22 @@ func AddBeatRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) 
 
 	// Like count is public
 	router.GET("/api/v1/likes/:entitytype/count/:entityid", rateLimiter.Limit(beats.GetLikeCount))
+
+	// Follows
+	router.PUT("/api/v1/follows/:id", rateLimiter.Limit(middleware.Authenticate(beats.ToggleFollow)))
+	router.DELETE("/api/v1/follows/:id", rateLimiter.Limit(middleware.Authenticate(beats.ToggleUnFollow)))
+	router.GET("/api/v1/follows/:id/status", rateLimiter.Limit(middleware.Authenticate(beats.DoesFollow)))
+	router.GET("/api/v1/followers/:id", rateLimiter.Limit(beats.GetFollowers))
+	router.GET("/api/v1/following/:id", rateLimiter.Limit(beats.GetFollowing))
+
+	// Subscribes / Follows
+	router.PUT("/api/v1/subscribes/:id", rateLimiter.Limit(middleware.Authenticate(beats.SubscribeEntity)))
+	router.DELETE("/api/v1/subscribes/:id", rateLimiter.Limit(middleware.Authenticate(beats.UnsubscribeEntity)))
+	router.GET("/api/v1/subscribes/:id", rateLimiter.Limit(middleware.Authenticate(beats.DoesSubscribeEntity)))
+
+	// Get all subscribers of a user/artist
+	router.GET("/api/v1/subscribers/:id", rateLimiter.Limit(beats.GetSubscribers))
+
 }
 
 func AddRecipeRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
@@ -171,9 +205,26 @@ func AddProductRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimite
 }
 
 func AddReportRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
-	router.POST("/api/v1/report", rateLimiter.Limit(middleware.Authenticate(reports.ReportContent)))
-	router.GET("/api/v1/reports", rateLimiter.Limit(middleware.Authenticate(reports.GetReports)))
-	router.PUT("/api/v1/report/:id", rateLimiter.Limit(middleware.Authenticate(reports.UpdateReport)))
+	router.PUT("/api/v1/report/:id",
+		middleware.Authenticate(
+			middleware.RequireRoles("moderator")(
+				reports.UpdateReport,
+			),
+		),
+	)
+
+	router.POST("/api/v1/report",
+		rateLimiter.Limit(
+			middleware.Authenticate(reports.ReportContent),
+		),
+	)
+
+	// Public (authenticated) endpoint to create appeals
+	router.POST("/api/v1/appeals",
+		rateLimiter.Limit(
+			middleware.Authenticate(reports.CreateAppeal),
+		),
+	)
 }
 
 func AddCommentsRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
@@ -201,14 +252,26 @@ func AddAuthRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) 
 }
 
 func AddBookingRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
-	router.GET("/api/v1/availability/:entityType/:entityId/:group", booking.GetAvailability) // Public
-	router.POST("/api/v1/book", rateLimiter.Limit(middleware.Authenticate(booking.BookSlot)))
-	router.POST("/api/v1/slots", rateLimiter.Limit(middleware.Authenticate(booking.CreateSlots)))
+	// existing routes
+	router.GET("/api/v1/bookings/slots", rateLimiter.Limit(middleware.Authenticate(booking.ListSlots)))
+	router.POST("/api/v1/bookings/slots", rateLimiter.Limit(middleware.Authenticate(booking.CreateSlot)))
+	router.DELETE("/api/v1/bookings/slots/:id", rateLimiter.Limit(middleware.Authenticate(booking.DeleteSlot)))
 
-	// WS should probably be protected if it streams private booking data
-	router.GET("/ws/booking/:entityType/:entityId", middleware.Authenticate(booking.HandleWS))
+	router.GET("/api/v1/bookings/bookings", rateLimiter.Limit(middleware.Authenticate(booking.ListBookings)))
+	router.POST("/api/v1/bookings/bookings", rateLimiter.Limit(middleware.Authenticate(booking.CreateBooking)))
+	router.PUT("/api/v1/bookings/bookings/:id/status", rateLimiter.Limit(middleware.Authenticate(booking.UpdateBookingStatus)))
+	router.DELETE("/api/v1/bookings/bookings/:id", rateLimiter.Limit(middleware.Authenticate(booking.CancelBooking)))
 
-	router.DELETE("/api/v1/book/:entityType/:entityId/:slotId", rateLimiter.Limit(middleware.Authenticate(booking.CancelBooking)))
+	router.GET("/api/v1/bookings/date-capacity", rateLimiter.Limit(middleware.Authenticate(booking.GetDateCapacity)))
+	router.POST("/api/v1/bookings/date-capacity", rateLimiter.Limit(middleware.Authenticate(booking.SetDateCapacity)))
+
+	// NEW: pricing tiers
+	router.GET("/api/v1/bookings/tiers", rateLimiter.Limit(middleware.Authenticate(booking.ListTiers)))
+	router.POST("/api/v1/bookings/tiers", rateLimiter.Limit(middleware.Authenticate(booking.CreateTier)))
+	router.DELETE("/api/v1/bookings/tiers/:id", rateLimiter.Limit(middleware.Authenticate(booking.DeleteTier)))
+
+	// NEW: auto slot generation from tier
+	router.POST("/api/v1/bookings/tiers/:id/generate-slots", rateLimiter.Limit(middleware.Authenticate(booking.GenerateSlotsFromTier)))
 }
 
 func AddEventsRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
@@ -235,6 +298,9 @@ func AddCartRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) 
 
 	// Order placement
 	router.POST("/api/v1/order", rateLimiter.Limit(middleware.Authenticate(cart.PlaceOrder)))
+
+	router.POST("/api/v1/coupon/validate", rateLimiter.Limit(middleware.Authenticate(cart.ValidateCouponHandler)))
+
 }
 
 func RegisterFarmRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
@@ -371,12 +437,14 @@ func AddMediaRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter)
 
 func AddPostRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
 	// Public read
-	router.GET("/api/v1/posts/:id", rateLimiter.Limit(posts.GetPost))
+	router.GET("/api/v1/posts/post/:id", rateLimiter.Limit(posts.GetPost))
 	router.GET("/api/v1/posts", rateLimiter.Limit(posts.GetAllPosts))
+	router.POST("/api/v1/posts/upload", rateLimiter.Limit(posts.UploadImage))
 
 	// Authenticated write
 	router.POST("/api/v1/posts/post", rateLimiter.Limit(middleware.Authenticate(posts.CreatePost)))
 	router.PUT("/api/v1/posts/post/:id", rateLimiter.Limit(middleware.Authenticate(posts.UpdatePost)))
+	router.DELETE("/api/v1/posts/post/:id", rateLimiter.Limit(middleware.Authenticate(posts.DeletePost)))
 }
 
 func AddPlaceRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
@@ -420,12 +488,6 @@ func AddProfileRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimite
 	router.GET("/api/v1/user/:username/data", rateLimiter.Limit(middleware.Authenticate(userdata.GetUserProfileData)))
 	router.GET("/api/v1/user/:username/udata", rateLimiter.Limit(middleware.Authenticate(userdata.GetOtherUserProfileData)))
 
-	// Follows
-	router.PUT("/api/v1/follows/:id", rateLimiter.Limit(middleware.Authenticate(profile.ToggleFollow)))
-	router.DELETE("/api/v1/follows/:id", rateLimiter.Limit(middleware.Authenticate(profile.ToggleUnFollow)))
-	router.GET("/api/v1/follows/:id/status", rateLimiter.Limit(middleware.Authenticate(profile.DoesFollow)))
-	router.GET("/api/v1/followers/:id", rateLimiter.Limit(profile.GetFollowers))
-	router.GET("/api/v1/following/:id", rateLimiter.Limit(profile.GetFollowing))
 }
 
 func AddArtistRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
@@ -455,9 +517,15 @@ func AddArtistRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter
 	router.DELETE("/api/v1/artists/:id/events", rateLimiter.Limit(middleware.Authenticate(dels.DeleteArtistEvent)))
 }
 
+// AddMapRoutes binds routes to the provided router and rate limiter
 func AddMapRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
+	// entity-specific endpoints
 	router.GET("/api/v1/maps/config/:entity", rateLimiter.Limit(maps.GetMapConfig))
 	router.GET("/api/v1/maps/markers/:entity", rateLimiter.Limit(maps.GetMapMarkers))
+
+	// player progression endpoints
+	router.POST("/api/v1/player/progress", rateLimiter.Limit(maps.UpdatePlayerProgress))
+	router.GET("/api/v1/player/progress", rateLimiter.Limit(maps.GetPlayerProgress))
 }
 
 func AddItineraryRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
@@ -475,35 +543,24 @@ func AddItineraryRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimi
 }
 
 func AddUtilityRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
-	// router.GET("/api/v1/check-file/:hash", rateLimiter.Limit(middleware.Authenticate(feed.CheckUserInFile)))
 	router.GET("/api/v1/csrf", rateLimiter.Limit(middleware.Authenticate(utils.CSRF)))
 }
 
 func AddFeedRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
-	// // Public viewing
-	// router.GET("/api/v1/feed/post/:postid", rateLimiter.Limit(feed.GetPost))
+	// Public viewing
+	router.GET("/api/v1/feed/post/:postid", rateLimiter.Limit(feed.GetPost))
 
-	// // Authenticated feed actions
-	// router.GET("/api/v1/feed/feed", rateLimiter.Limit(middleware.Authenticate(feed.GetPosts)))
+	// Authenticated feed actions
+	router.GET("/api/v1/feed/feed", rateLimiter.Limit(middleware.Authenticate(feed.GetPosts)))
+	router.GET("/api/v1/feed/media/:entityType/:entityId", rateLimiter.Limit(middleware.Authenticate(feed.GetPosts)))
 
-	// router.POST("/api/v1/feed/post", rateLimiter.Limit(middleware.Authenticate(feed.CreateTweetPost)))
-	// router.DELETE("/api/v1/feed/post/:postid", rateLimiter.Limit(middleware.Authenticate(dels.DeletePost)))
+	router.POST("/api/v1/feed/post", rateLimiter.Limit(middleware.Authenticate(feed.CreateTweetPost)))
+	router.DELETE("/api/v1/feed/post/:postid", rateLimiter.Limit(middleware.Authenticate(dels.DeletePost)))
 
-	// // NEW
-	// router.PATCH("/api/v1/feed/post/:postid", rateLimiter.Limit(middleware.Authenticate(feed.EditPost)))
-	// router.POST("/api/v1/feed/post/:postid/subtitles/:lang", rateLimiter.Limit(middleware.Authenticate(feed.UploadSubtitle)))
+	// NEW
+	router.PATCH("/api/v1/feed/post/:postid", rateLimiter.Limit(middleware.Authenticate(feed.EditPost)))
+	router.POST("/api/v1/feed/post/:postid/subtitles/:lang", rateLimiter.Limit(middleware.Authenticate(feed.UploadSubtitle)))
 }
-
-// func AddFeedRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
-// 	// Public viewing
-// 	router.GET("/api/v1/feed/post/:postid", rateLimiter.Limit(feed.GetPost))
-
-// 	// Authenticated feed actions
-// 	router.GET("/api/v1/feed/feed", rateLimiter.Limit(middleware.Authenticate(feed.GetPosts)))
-
-// 	router.POST("/api/v1/feed/post", rateLimiter.Limit(middleware.Authenticate(feed.CreateTweetPost)))
-// 	router.DELETE("/api/v1/feed/post/:postid", rateLimiter.Limit(middleware.Authenticate(feed.DeletePost)))
-// }
 
 func AddSettingsRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
 	router.GET("/api/v1/settings/init/:userid", rateLimiter.Limit(middleware.Authenticate(settings.InitUserSettings)))
@@ -512,7 +569,7 @@ func AddSettingsRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimit
 }
 
 func AddAdsRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
-	router.GET("/api/v1/sda/sda", rateLimiter.Limit(middleware.Authenticate(ads.GetAds)))
+	router.GET("/api/v1/sda/sda", rateLimiter.Limit(middleware.OptionalAuth(ads.GetAds)))
 }
 
 func AddSearchRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
@@ -525,19 +582,46 @@ func AddBannerRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter
 	router.PUT("/api/v1/picture/:entitytype/:entityid", rateLimiter.Limit(middleware.Authenticate(filemgr.EditBanner)))
 }
 
+func AddHashtagRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
+	router.GET("/api/v1/hashtags/hashtag/:tag", hashtags.GetHashtagPosts)
+	router.GET("/api/v1/hashtags/hashtag/:tag/top", hashtags.GetTopHashtagPosts)
+	router.GET("/api/v1/hashtags/hashtag/:tag/latest", hashtags.GetLatestHashtagPosts)
+	router.GET("/api/v1/hashtags/hashtag/:tag/people", hashtags.GetHashtagPeople)
+	router.GET("/api/v1/hashtags/hashtags/trending", hashtags.GetTrendingHashtags)
+
+	// router.GET("/api/v1/hashtags/hashtag/:tag", hashtags.GetHashtagPosts)
+	// router.GET("/api/v1/hashtags/hashtags/trending", hashtags.GetTrendingHashtags)
+}
+
 func AddMiscRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
 	router.GET("/api/v1/users/meta", rateLimiter.Limit(metadata.GetUsersMeta))
-
-	// Example Routes
-	// router.GET("/", rateLimiter.Limit(wrapHandler(proxyWithCircuitBreaker("frontend-service"))))
-
-	// router.GET("/api/v1/search/:entityType", rateLimiter.Limit(searchEvents))
 
 	// router.POST("/api/v1/check-file", rateLimiter.Limit(filecheck.CheckFileExists))
 	// router.POST("/api/v1/upload", rateLimiter.Limit(filecheck.UploadFile))
 	// router.POST("/api/v1/feed/remhash", rateLimiter.Limit(filecheck.RemoveUserFile))
-
-	// router.POST("/agi/home_feed_section", rateLimiter.Limit(middleware.Authenticate(agi.GetHomeFeed)))
 	// router.GET("/resize/:folder/*filename", cdn.ServeStatic)
+
+}
+
+func AddNewChatRoutes(router *httprouter.Router, hub *newchat.Hub, rateLimiter *ratelim.RateLimiter) {
+	router.GET("/api/v1/newchats/all", middleware.Authenticate(newchat.GetUserChats))
+	router.POST("/api/v1/newchats/init", middleware.Authenticate(newchat.InitChat))
+
+	// This should likely be protected; token could be in query or header
+	router.GET("/ws/newchat/:room", middleware.Authenticate(newchat.WebSocketHandler(hub)))
+
+	router.POST("/newchat/upload", middleware.Authenticate(newchat.UploadHandler(hub)))
+	router.POST("/newchat/edit", middleware.Authenticate(newchat.EditMessageHandler(hub)))
+	router.POST("/newchat/delete", middleware.Authenticate(newchat.DeleteMessageHandler(hub)))
+
+	// router.GET("/newchat/:room/poll", middleware.Authenticate(newchat.PollMessagesHandler))
+
+	router.GET("/api/v1/newchat/:room", middleware.Authenticate(newchat.GetChat))
+	router.POST("/api/v1/newchat/:room/message", middleware.Authenticate(newchat.CreateMessage))
+	router.DELETE("/api/v1/newchat/:room/message/:msgid", middleware.Authenticate(dels.DeletesMessage))
+
+	/**/
+
+	router.PUT("/api/v1/newchat/:room/message/:msgid", middleware.Authenticate(newchat.UpdateMessage))
 
 }
