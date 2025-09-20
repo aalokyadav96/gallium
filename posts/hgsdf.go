@@ -114,12 +114,14 @@ func CreateOrUpdatePost(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 			"thumb":       pickThumb(blocks),
 			"updatedAt":   time.Now(),
 		}
+
 		_, err := db.BlogPostsCollection.UpdateOne(ctx, filter, bson.M{"$set": update})
 		if err != nil {
 			utils.RespondWithError(w, http.StatusInternalServerError, "Failed to update post")
 			return
 		}
-		go mq.Emit(ctx, "post-updated", models.Index{EntityType: "blogpost", EntityId: postid, Method: "PUT"})
+
+		go mq.Emit(ctx, "post-updated", models.Index{EntityType: "blogpost", EntityId: postid, Method: "PATCH"})
 		utils.RespondWithJSON(w, http.StatusOK, map[string]any{"postid": postid})
 		return
 	}
@@ -141,6 +143,7 @@ func CreateOrUpdatePost(w http.ResponseWriter, r *http.Request, ps httprouter.Pa
 		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to create post")
 		return
 	}
+
 	go mq.Emit(ctx, "post-created", models.Index{EntityType: "blogpost", EntityId: newPost.PostID, Method: "POST"})
 	utils.RespondWithJSON(w, http.StatusOK, map[string]any{"postid": newPost.PostID})
 }

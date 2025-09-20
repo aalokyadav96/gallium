@@ -62,6 +62,24 @@ func AddActivityRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimit
 	router.POST("/api/v1/telemetry/sw-event", activity.HandleTelemetry)
 }
 
+// func AddAdminRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
+
+// 	// Moderator-only endpoints
+// 	router.GET("/api/v1/moderator/reports",
+// 		middleware.Authenticate(
+// 			middleware.RequireRoles("moderator")(
+// 				moderator.GetReports,
+// 			),
+// 		),
+// 	)
+
+// 	router.POST("/api/v1/moderator/apply",
+// 		rateLimiter.Limit(
+// 			middleware.Authenticate(moderator.ApplyModerator),
+// 		),
+// 	)
+// }
+
 func AddAdminRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
 
 	// Moderator-only endpoints
@@ -226,6 +244,22 @@ func AddReportRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter
 		),
 	)
 }
+
+// func AddReportRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
+// 	router.PUT("/api/v1/report/:id",
+// 		middleware.Authenticate(
+// 			middleware.RequireRoles("moderator")(
+// 				reports.UpdateReport,
+// 			),
+// 		),
+// 	)
+// 	router.POST("/api/v1/report",
+// 		rateLimiter.Limit(
+// 			middleware.Authenticate(reports.ReportContent),
+// 		),
+// 	)
+
+// }
 
 func AddCommentsRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
 	// Create comment
@@ -443,7 +477,7 @@ func AddPostRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) 
 
 	// Authenticated write
 	router.POST("/api/v1/posts/post", rateLimiter.Limit(middleware.Authenticate(posts.CreatePost)))
-	router.PUT("/api/v1/posts/post/:id", rateLimiter.Limit(middleware.Authenticate(posts.UpdatePost)))
+	router.PATCH("/api/v1/posts/post/:id", rateLimiter.Limit(middleware.Authenticate(posts.UpdatePost)))
 	router.DELETE("/api/v1/posts/post/:id", rateLimiter.Limit(middleware.Authenticate(posts.DeletePost)))
 }
 
@@ -528,6 +562,15 @@ func AddMapRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
 	router.GET("/api/v1/player/progress", rateLimiter.Limit(maps.GetPlayerProgress))
 }
 
+// func AddMapRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
+// 	router.GET("/api/v1/maps/config/:entity", rateLimiter.Limit(maps.GetMapConfig))
+// 	router.GET("/api/v1/maps/markers/:entity", rateLimiter.Limit(maps.GetMapMarkers))
+// 	// player progression endpoint (POST)
+// 	// query param: ?entity=ls (defaults to ls)
+// 	router.POST("/api/v1/player/progress", rateLimiter.Limit(maps.UpdatePlayerProgress))
+
+// }
+
 func AddItineraryRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
 	// Public
 	router.GET("/api/v1/itineraries", rateLimiter.Limit(itinerary.GetItineraries))
@@ -561,6 +604,17 @@ func AddFeedRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) 
 	router.PATCH("/api/v1/feed/post/:postid", rateLimiter.Limit(middleware.Authenticate(feed.EditPost)))
 	router.POST("/api/v1/feed/post/:postid/subtitles/:lang", rateLimiter.Limit(middleware.Authenticate(feed.UploadSubtitle)))
 }
+
+// func AddFeedRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
+// 	// Public viewing
+// 	router.GET("/api/v1/feed/post/:postid", rateLimiter.Limit(feed.GetPost))
+
+// 	// Authenticated feed actions
+// 	router.GET("/api/v1/feed/feed", rateLimiter.Limit(middleware.Authenticate(feed.GetPosts)))
+
+// 	router.POST("/api/v1/feed/post", rateLimiter.Limit(middleware.Authenticate(feed.CreateTweetPost)))
+// 	router.DELETE("/api/v1/feed/post/:postid", rateLimiter.Limit(middleware.Authenticate(feed.DeletePost)))
+// }
 
 func AddSettingsRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
 	router.GET("/api/v1/settings/init/:userid", rateLimiter.Limit(middleware.Authenticate(settings.InitUserSettings)))
