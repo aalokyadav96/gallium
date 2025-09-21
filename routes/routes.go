@@ -3,6 +3,7 @@ package routes
 import (
 	"naevis/activity"
 	"naevis/ads"
+	"naevis/analytics"
 	"naevis/artists"
 	"naevis/auth"
 	"naevis/baito"
@@ -645,6 +646,11 @@ func AddHashtagRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimite
 
 	// router.GET("/api/v1/hashtags/hashtag/:tag", hashtags.GetHashtagPosts)
 	// router.GET("/api/v1/hashtags/hashtags/trending", hashtags.GetTrendingHashtags)
+}
+
+func AddAnalyticsRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
+	// Example: /api/v1/antics/events/123 or /api/v1/analytics/places/456
+	router.GET("/api/v1/antics/:entityType/:entityId", rateLimiter.Limit(analytics.GetEntityAnalytics))
 }
 
 func AddMiscRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
