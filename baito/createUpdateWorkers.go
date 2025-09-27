@@ -95,7 +95,10 @@ func CreateWorkerProfile(w http.ResponseWriter, r *http.Request, _ httprouter.Pa
 	ctx := r.Context()
 	userID := utils.GetUserIDFromRequest(r)
 
-	if _, err := db.BaitoWorkerCollection.FindOne(ctx, bson.M{"userid": userID}).DecodeBytes(); err == nil {
+	// Check if worker profile already exists
+	var existingWorker models.BaitoWorker
+	err := db.BaitoWorkerCollection.FindOne(ctx, bson.M{"userid": userID}).Decode(&existingWorker)
+	if err == nil {
 		utils.RespondWithError(w, http.StatusConflict, "Worker profile already exists")
 		return
 	} else if err != mongo.ErrNoDocuments {
@@ -104,34 +107,49 @@ func CreateWorkerProfile(w http.ResponseWriter, r *http.Request, _ httprouter.Pa
 		return
 	}
 
+	// Parse form data
 	worker, _, err := parseWorkerForm(r, false)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusBadRequest, "Invalid form data")
 		return
 	}
 
+	// Validate required fields
 	if worker.Name == "" || worker.Age < 16 || worker.Phone == "" || worker.Location == "" || len(worker.Preferred) == 0 || worker.Bio == "" {
 		utils.RespondWithError(w, http.StatusBadRequest, "Missing required fields")
 		return
 	}
 
+	// Set user ID explicitly in worker object
+	worker.BaitoUserID = userID
+
+	// Insert new worker profile
 	if _, err := db.BaitoWorkerCollection.InsertOne(ctx, worker); err != nil {
 		log.Printf("Insert error: %v", err)
 		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to save worker profile")
 		return
 	}
 
-	_, _ = db.UserCollection.UpdateOne(ctx,
+	// Update user role and timestamp
+	_, err = db.UserCollection.UpdateOne(ctx,
 		bson.M{"userid": userID},
 		bson.M{
 			"$addToSet": bson.M{"role": "worker"},
 			"$set":      bson.M{"updated_at": time.Now()},
 		},
 	)
+	if err != nil {
+		log.Printf("User update error: %v", err)
+		// Not fatal, so we continue
+	}
 
+	// Emit event asynchronously
 	go mq.Emit(ctx, "worker-created", models.Index{
-		EntityType: "worker", EntityId: worker.BaitoUserID, Method: "POST",
+		EntityType: "worker",
+		EntityId:   worker.BaitoUserID,
+		Method:     "POST",
 	})
+
 	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "Worker profile created successfully"})
 }
 

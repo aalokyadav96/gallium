@@ -132,7 +132,7 @@ func processVideoResolution(inputPath, outputPath, resolution string) error {
 }
 
 // CreatePoster extracts a poster JPG for the video.
-// Uses a deterministic timestamp (25% of duration), with sane bounds, and ensures .jpg only once.
+// Picks a frame at 25% of duration and ensures 16:9 aspect ratio (1280x720) with black padding.
 func CreatePoster(videoPath, posterPath string) error {
 	if err := os.MkdirAll(filepath.Dir(posterPath), 0o755); err != nil {
 		return fmt.Errorf("failed to create poster directory for %s: %w", posterPath, err)
@@ -158,16 +158,18 @@ func CreatePoster(videoPath, posterPath string) error {
 	if t > duration-0.5 {
 		t = math.Max(0.0, duration-0.5)
 	}
-	// Keep a small random nudge to avoid exact same frame across retries if needed (non-deterministic part kept tiny)
+	// Add a tiny random nudge to avoid exact same frame across retries
 	t += math.Mod(rand.Float64()*0.2, 0.2) // up to +200ms
 	timestamp := formatTimestamp(t)
 
+	// Extract a frame and enforce 16:9 with scaling + black padding
 	args := []string{
 		"-y",
 		"-ss", timestamp,
 		"-i", videoPath,
 		"-vframes", "1",
 		"-q:v", "2",
+		"-vf", "scale=w=iw*min(1280/iw\\,720/ih):h=ih*min(1280/iw\\,720/ih),pad=1280:720:(1280-iw*min(1280/iw\\,720/ih))/2:(720-ih*min(1280/iw\\,720/ih))/2:black",
 		posterJPG,
 	}
 

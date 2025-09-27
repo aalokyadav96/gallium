@@ -20,6 +20,7 @@ import (
 	"naevis/hashtags"
 	"naevis/home"
 	"naevis/itinerary"
+	"naevis/jobs"
 	"naevis/maps"
 	"naevis/media"
 	"naevis/menu"
@@ -124,27 +125,34 @@ func AddAdminRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter)
 	)
 }
 
+func AddJobRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
+	router.GET("/api/v1/jobs/:entitytype/:entityid", rateLimiter.Limit(jobs.GetJobsRelatedTOEntity))
+	router.POST("/api/v1/jobs/:entitytype/:entityid", rateLimiter.Limit(middleware.Authenticate(jobs.CreateBaitoForEntity)))
+}
+
 func AddBaitoRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
 	// Create / update jobs → require auth
 	router.POST("/api/v1/baitos/baito", rateLimiter.Limit(middleware.Authenticate(baito.CreateBaito)))
-	router.PUT("/api/v1/baitos/baito/:id", rateLimiter.Limit(middleware.Authenticate(baito.UpdateBaito)))
+	router.PUT("/api/v1/baitos/baito/:baitoid", rateLimiter.Limit(middleware.Authenticate(baito.UpdateBaito)))
+	router.DELETE("/api/v1/baitos/baito/:baitoid", rateLimiter.Limit(middleware.Authenticate(baito.DeleteBaito)))
 
 	// Public job browsing
 	router.GET("/api/v1/baitos/latest", rateLimiter.Limit(baito.GetLatestBaitos))
 	router.GET("/api/v1/baitos/related", rateLimiter.Limit(baito.GetRelatedBaitos))
 
-	router.GET("/api/v1/baitos/baito/:id", rateLimiter.Limit(baito.GetBaitoByID))
+	router.GET("/api/v1/baitos/baito/:baitoid", rateLimiter.Limit(baito.GetBaitoByID))
 
 	// Owner-specific views → require auth
 	router.GET("/api/v1/baitos/mine", middleware.Authenticate(baito.GetMyBaitos))
-	router.GET("/api/v1/baitos/baito/:id/applicants", middleware.Authenticate(baito.GetBaitoApplicants))
+	router.GET("/api/v1/baitos/baito/:baitoid/applicants", middleware.Authenticate(baito.GetBaitoApplicants))
 
 	// Part-timer actions → require auth
-	router.POST("/api/v1/baitos/baito/:id/apply", middleware.Authenticate(baito.ApplyToBaito))
+	router.POST("/api/v1/baitos/baito/:baitoid/apply", middleware.Authenticate(baito.ApplyToBaito))
 	router.GET("/api/v1/baitos/applications", middleware.Authenticate(baito.GetMyApplications))
 
 	// Profile creation → require auth
 	router.POST("/api/v1/baitos/profile", middleware.Authenticate(baito.CreateWorkerProfile))
+	router.PATCH("/api/v1/baitos/profile/:workerId", middleware.Authenticate(baito.UpdateWorkerProfile))
 
 	// Worker directory (probably private) → require auth
 	router.GET("/api/v1/baitos/workers", rateLimiter.Limit(baito.GetWorkers))

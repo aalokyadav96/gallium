@@ -90,3 +90,25 @@ func findAndRespondBaitos(ctx context.Context, w http.ResponseWriter, cursor *mo
 
 	utils.RespondWithJSON(w, http.StatusOK, results)
 }
+
+// ------------------ DELETE ------------------
+func DeleteBaito(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	ctx := r.Context()
+	userID := utils.GetUserIDFromRequest(r)
+	baitoID := ps.ByName("baitoid")
+
+	// Only owner can delete
+	filter := bson.M{"baitoid": baitoID, "ownerId": userID}
+
+	res, err := db.BaitoCollection.DeleteOne(ctx, filter)
+	if err != nil {
+		http.Error(w, "Failed to delete baito", http.StatusInternalServerError)
+		return
+	}
+	if res.DeletedCount == 0 {
+		http.Error(w, "Baito not found or unauthorized", http.StatusForbidden)
+		return
+	}
+
+	utils.RespondWithJSON(w, http.StatusNoContent, map[string]string{})
+}

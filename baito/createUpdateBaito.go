@@ -138,7 +138,7 @@ func UpdateBaito(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	}
 
 	filter := bson.M{
-		"baitoid": ps.ByName("id"),
+		"baitoid": ps.ByName("baitoid"),
 		"ownerId": utils.GetUserIDFromRequest(r),
 	}
 
@@ -154,10 +154,10 @@ func UpdateBaito(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	}
 
 	go mq.Emit(ctx, "baito-updated", models.Index{
-		EntityType: "baito", EntityId: ps.ByName("id"), Method: "PUT",
+		EntityType: "baito", EntityId: ps.ByName("baitoid"), Method: "PUT",
 	})
 	utils.RespondWithJSON(w, http.StatusOK, map[string]string{
 		"message": "Baito updated",
-		"baitoid": ps.ByName("id"),
+		"baitoid": ps.ByName("baitoid"),
 	})
 }

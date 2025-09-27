@@ -116,25 +116,9 @@ func ExtractImageMetadata(img image.Image, uid string) error {
 	return nil
 }
 
-// detectPicType attempts to infer the PictureType from a destination directory path.
-// It compares the final path element against PictureSubfolders map values.
-func detectPicType(destDir string) PictureType {
-	clean := filepath.Clean(destDir)
-	last := strings.ToLower(filepath.Base(clean))
-	if last == "." || last == string(os.PathSeparator) {
-		return ""
-	}
-	for picType, folder := range PictureSubfolders {
-		if strings.ToLower(folder) == last {
-			return picType
-		}
-	}
-	return ""
-}
-
 // ensureSafeFilename sanitizes a base name (without ext) to a safe filename, returns name+ext.
 // It removes unsafe chars, lowercases and collapses whitespace. If result is empty, a uuid is used.
-func ensureSafeFilename(name, ext string) string {
+func ensureSafeFilename(name, ext string) (string, string) {
 	// strip extension if included
 	name = strings.TrimSuffix(name, filepath.Ext(name))
 	name = strings.TrimSpace(name)
@@ -155,7 +139,21 @@ func ensureSafeFilename(name, ext string) string {
 	} else {
 		ext = strings.ToLower(ext)
 	}
-	return name + ext
+	return name, ext
+}
+
+// getSafeFilename generates a safe filename using custom function or uuid fallback.
+// The returned string includes the extension.
+func getSafeFilename(original, ext string, fn func(string) string) (string, string) {
+	name := ""
+	if fn != nil {
+		name = strings.TrimSpace(fn(original))
+	}
+	if name == "" {
+		// keep uuid + ext
+		return uuid.New().String(), ext
+	}
+	return ensureSafeFilename(name, ext)
 }
 
 // isExtensionAllowed checks if the file extension is allowed for a given picture type
@@ -217,18 +215,4 @@ func ValidateImageDimensions(img image.Image, maxWidth, maxHeight int) error {
 		return fmt.Errorf("image dimensions %dx%d exceed max %dx%d", bounds.Dx(), bounds.Dy(), maxWidth, maxHeight)
 	}
 	return nil
-}
-
-// getSafeFilename generates a safe filename using custom function or uuid fallback.
-// The returned string includes the extension.
-func getSafeFilename(original, ext string, fn func(string) string) string {
-	name := ""
-	if fn != nil {
-		name = strings.TrimSpace(fn(original))
-	}
-	if name == "" {
-		// keep uuid + ext
-		return uuid.New().String() + ext
-	}
-	return ensureSafeFilename(name, ext)
 }

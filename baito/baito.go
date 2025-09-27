@@ -20,7 +20,7 @@ import (
 
 func GetBaitoByID(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	ctx := r.Context()
-	id := ps.ByName("id")
+	id := ps.ByName("baitoid")
 
 	var b models.Baito
 	if err := db.BaitoCollection.FindOne(ctx, bson.M{"baitoid": id}).Decode(&b); err != nil {
@@ -51,7 +51,7 @@ func ApplyToBaito(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 	}
 
 	app := models.BaitoApplication{
-		BaitoID:     ps.ByName("id"),
+		BaitoID:     ps.ByName("baitoid"),
 		UserID:      utils.GetUserIDFromRequest(r),
 		Username:    utils.GetUsernameFromRequest(r),
 		Pitch:       pitch,
@@ -86,7 +86,7 @@ func GetMyBaitos(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 
 func GetBaitoApplicants(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	ctx := r.Context()
-	cursor, err := db.BaitoApplicationsCollection.Find(ctx, bson.M{"baitoid": ps.ByName("id")})
+	cursor, err := db.BaitoApplicationsCollection.Find(ctx, bson.M{"baitoid": ps.ByName("baitoid")})
 	if err != nil {
 		log.Printf("DB error: %v", err)
 		utils.RespondWithError(w, http.StatusInternalServerError, "Database error")

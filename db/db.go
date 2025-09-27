@@ -52,6 +52,7 @@ var (
 	BlogPostsCollection         *mongo.Collection
 	FilesCollection             *mongo.Collection
 	MerchCollection             *mongo.Collection
+	LoopsCollection             *mongo.Collection
 	MenuCollection              *mongo.Collection
 	ActivitiesCollection        *mongo.Collection
 	EventsCollection            *mongo.Collection
@@ -67,6 +68,8 @@ var (
 	ReportsCollection           *mongo.Collection
 	RecipeCollection            *mongo.Collection
 	BaitoCollection             *mongo.Collection
+	JobApplicationsCollection   *mongo.Collection
+	JobsCollection              *mongo.Collection
 	ModeratorApplications       *mongo.Collection
 	BaitoApplicationsCollection *mongo.Collection
 	BaitoWorkerCollection       *mongo.Collection
@@ -152,8 +155,11 @@ func init() {
 	HashtagCollection = db.Collection("hashtags")
 	IdempotencyCollection = db.Collection("idempotency")
 	ItineraryCollection = db.Collection("itinerary")
+	JobApplicationsCollection = db.Collection("jobapplics")
+	JobsCollection = db.Collection("jobs")
 	JournalCollection = db.Collection("journals")
 	LikesCollection = db.Collection("likes")
+	LoopsCollection = db.Collection("loops")
 	MapsCollection = db.Collection("maps")
 	MediaCollection = db.Collection("media")
 	MenuCollection = db.Collection("menu")
@@ -169,17 +175,17 @@ func init() {
 	ReportsCollection = db.Collection("reports")
 	ReviewsCollection = db.Collection("reviews")
 	RoomsCollection = db.Collection("rooms")
+	ServiceCollection = db.Collection("service")
 	SettingsCollection = db.Collection("settings")
 	SlotCollection = db.Collection("slots")
 	SongsCollection = db.Collection("songs")
 	SubscribersCollection = db.Collection("subscribers")
-	TransactionCollection = db.Collection("transactions")
 	TicketsCollection = db.Collection("ticks")
 	TiersCollection = db.Collection("tiers")
+	TransactionCollection = db.Collection("transactions")
 	UserDataCollection = db.Collection("userdata")
 	UserCollection = db.Collection("users")
 	SearchCollection = dbx.Collection("users")
-	ServiceCollection = db.Collection("service")
 }
 
 // logPoolStats logs basic goroutine and pool stats every 60s (optional)

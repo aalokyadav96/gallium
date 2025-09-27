@@ -20,6 +20,7 @@ const (
 	EntityMedia   EntityType = "media"
 	EntityFeed    EntityType = "feed"
 	EntityProduct EntityType = "product"
+	EntityLoops   EntityType = "loops"
 
 	PicBanner   PictureType = "banner"
 	PicPhoto    PictureType = "photo"

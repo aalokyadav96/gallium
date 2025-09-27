@@ -3,40 +3,331 @@ package filemgr
 import (
 	"fmt"
 	"image"
+	"image/jpeg"
+	"image/png"
 	"io"
 	"mime/multipart"
-	"naevis/mq"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
+
+	"naevis/mq"
+
+	"github.com/disintegration/imaging"
 )
 
-// SaveFile saves a file with validation, size limit and virus scan.
-// Returns the saved filename (base name).
-func SaveFile(
-	reader io.Reader,
-	header *multipart.FileHeader,
-	destDir string,
-	maxSize int64,
-	customNameFn func(original string) string,
-) (string, error) {
+const (
+	defaultThumbWidth = 500
+	maxUploadSize     = 10 << 20 // 10 MB
+	defaultQuality    = 85
+)
 
+// -------------------------
+// Public Save Functions
+// -------------------------
+
+func SaveFileForEntity(file multipart.File, header *multipart.FileHeader, entity EntityType, picType PictureType) (string, error) {
+	defer file.Close()
+	filename, ext, err := saveFileAndProcess(file, header, entity, picType, defaultThumbWidth, "")
+	return filename + ext, err
+}
+
+func SaveImageWithThumb(file multipart.File, header *multipart.FileHeader, entity EntityType, picType PictureType, thumbWidth int, userid string) (string, string, error) {
+	defer file.Close()
+	filename, ext, err := saveFileAndProcess(file, header, entity, picType, thumbWidth, userid)
+	if err != nil {
+		return filename + ext, "", err
+	}
+
+	// If thumbnail not already created, return empty string
+	thumbName := ""
+	fullPath := filepath.Join(ResolvePath(entity, picType), filename)
+	if img, _, err := openImage(fullPath); err == nil {
+		if img.Bounds().Dx() > thumbWidth || img.Bounds().Dy() > thumbWidth {
+			thumbName = userid + ".jpg"
+			if err := generateThumbnail(img, entity, thumbName, thumbWidth); err != nil {
+				return filename, "", fmt.Errorf("thumbnail failed: %w", err)
+			}
+		}
+	}
+	return filename, thumbName, nil
+}
+
+// -------------------------
+// Internal helper
+// -------------------------
+
+func saveMultipartFile(hdr *multipart.FileHeader, entity EntityType, picType PictureType) (string, string, error) {
+	file, err := hdr.Open()
+	if err != nil {
+		return "", "", fmt.Errorf("open %s: %w", hdr.Filename, err)
+	}
+	defer file.Close()
+
+	return saveFileAndProcess(file, hdr, entity, picType, defaultThumbWidth, "")
+}
+
+// -------------------------
+// Multipart Form Helpers
+// -------------------------
+
+// SaveFormFile saves a single file from a multipart.Form.
+// Returns the saved filename or error.
+func SaveFormFile(form *multipart.Form, formKey string, entity EntityType, picType PictureType, required bool) (string, error) {
+	files := form.File[formKey]
+	if len(files) == 0 {
+		if required {
+			return "", fmt.Errorf("missing required file: %s", formKey)
+		}
+		return "", nil
+	}
+
+	filename, ext, err := saveMultipartFile(files[0], entity, picType)
+	return filename + ext, err
+}
+
+// SaveFormFiles saves multiple files under the same form key.
+// Returns list of saved filenames or partial errors.
+func SaveFormFiles(form *multipart.Form, formKey string, entity EntityType, picType PictureType, required bool) ([]string, error) {
+	files := form.File[formKey]
+	if len(files) == 0 {
+		if required {
+			return nil, fmt.Errorf("missing required files: %s", formKey)
+		}
+		return nil, nil
+	}
+
+	var saved []string
+	var errs []string
+	for _, hdr := range files {
+		filename, ext, err := saveMultipartFile(hdr, entity, picType)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", hdr.Filename, err))
+			continue
+		}
+		saved = append(saved, filename+ext)
+	}
+
+	if len(errs) > 0 {
+		return saved, fmt.Errorf("errors saving files: %s", strings.Join(errs, "; "))
+	}
+	return saved, nil
+}
+
+// SaveFormFilesByKeys saves files for multiple keys in the form.
+// Returns all successfully saved filenames and any partial errors.
+func SaveFormFilesByKeys(form *multipart.Form, keys []string, entity EntityType, picType PictureType, required bool) ([]string, error) {
+	var allSaved []string
+	var errs []string
+
+	for _, key := range keys {
+		saved, err := SaveFormFiles(form, key, entity, picType, required)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", key, err))
+		}
+		allSaved = append(allSaved, saved...)
+	}
+
+	if len(errs) > 0 {
+		return allSaved, fmt.Errorf("errors: %s", strings.Join(errs, "; "))
+	}
+	return allSaved, nil
+}
+
+// -------------------------
+// Core DRY Helper
+// -------------------------
+
+func saveFileAndProcess(file multipart.File, header *multipart.FileHeader, entity EntityType, picType PictureType, thumbWidth int, userid string) (string, string, error) {
+	path := ResolvePath(entity, picType)
+
+	filename, ext, fullPath, err := writeValidatedFile(file, header, path, picType, maxUploadSize)
+	if err != nil {
+		return "", "", err
+	}
+
+	if isImageType(picType) {
+		if err := processImage(fullPath, entity, picType, thumbWidth, userid); err != nil {
+			return filename, ext, err
+		}
+	} else if picType == PicVideo || isVideoExt(ext) {
+		go func(vpath string, ent EntityType, fname string) {
+			if thumb, err := generateVideoPoster(vpath, ent, fname); err != nil {
+				if LogFunc != nil {
+					LogFunc(fmt.Sprintf("warning: video poster generation failed for %s: %v", fname, err), 0, "")
+				}
+			} else if LogFunc != nil {
+				LogFunc(thumb, 0, "image/jpeg")
+			}
+		}(fullPath, entity, filename+ext)
+	}
+
+	return filename, ext, nil
+}
+
+// -------------------------
+// Image/Video Processing
+// -------------------------
+
+func processImage(fullPath string, entity EntityType, picType PictureType, thumbWidth int, uid string) error {
+	img, _, err := openImage(fullPath)
+	if err != nil {
+		if LogFunc != nil {
+			LogFunc(fullPath, 0, "unknown")
+		}
+		return nil // best-effort
+	}
+
+	ext := strings.ToLower(filepath.Ext(fullPath))
+	newPath, err := normalizeImageFormat(fullPath, ext, img)
+	if err != nil {
+		return err
+	}
+	if newPath != fullPath {
+		fullPath = newPath
+	}
+
+	// MQ notification
+	go notifyImageSaved(fullPath, entity, filepath.Base(fullPath), picType, uid)
+
+	// Thumbnail
+	imgCopy := imaging.Clone(img)
+	go func() {
+		// thumbName := filepath.Base(fullPath)
+		thumbName := uid + ".jpg"
+		if err := generateThumbnail(imgCopy, entity, thumbName, thumbWidth); err != nil && LogFunc != nil {
+			LogFunc(fmt.Sprintf("warning: thumbnail failed for %s: %v", thumbName, err), 0, "")
+		}
+	}()
+
+	// Metadata extraction
+	go func() {
+		if err := ExtractImageMetadata(imaging.Clone(img), generateUniqueID()); err != nil && LogFunc != nil {
+			LogFunc(fmt.Sprintf("warning: metadata extraction failed for %s: %v", filepath.Base(fullPath), err), 0, "")
+		}
+	}()
+
+	if LogFunc != nil {
+		LogFunc(filepath.Base(fullPath), 0, "image/png")
+	}
+	return nil
+}
+
+func openImage(path string) (image.Image, string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, "", fmt.Errorf("open image: %w", err)
+	}
+	defer f.Close()
+	img, format, err := image.Decode(f)
+	return img, format, err
+}
+
+func notifyImageSaved(path string, entity EntityType, name string, picType PictureType, uid string) {
+	_ = mq.NotifyImageSaved(path, string(entity), name, string(picType), uid)
+}
+
+// -------------------------
+// Thumbnail & Poster
+// -------------------------
+
+func generateThumbnail(img image.Image, entity EntityType, baseFilename string, thumbWidth int) error {
+	resized := imaging.Resize(img, thumbWidth, 0, imaging.Lanczos)
+	name := strings.TrimSuffix(baseFilename, filepath.Ext(baseFilename)) + ".jpg"
+	path := filepath.Join(ResolvePath(entity, PicThumb), name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
+	}
+	out, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("create thumbnail: %w", err)
+	}
+	defer out.Close()
+	if err := jpeg.Encode(out, resized, &jpeg.Options{Quality: defaultQuality}); err != nil {
+		_ = os.Remove(path)
+		return fmt.Errorf("encode thumbnail: %w", err)
+	}
+	if LogFunc != nil {
+		LogFunc(path, 0, "image/jpeg")
+	}
+	return nil
+}
+
+func generateVideoPoster(videoPath string, entity EntityType, baseFilename string) (string, error) {
+	thumbName := strings.TrimSuffix(baseFilename, filepath.Ext(baseFilename)) + ".jpg"
+	thumbDir := ResolvePath(entity, PicThumb)
+	thumbPath := filepath.Join(thumbDir, thumbName)
+	if err := os.MkdirAll(thumbDir, 0o755); err != nil {
+		return "", fmt.Errorf("mkdir %s: %w", thumbDir, err)
+	}
+
+	ts := 0.5
+	if out, err := exec.Command("ffprobe", "-v", "error", "-show_entries", "format=duration",
+		"-of", "default=noprint_wrappers=1:nokey=1", videoPath).Output(); err == nil {
+		if d, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64); err == nil && d > 0 {
+			if d >= 0.5 {
+				ts = d / 2.0
+			} else {
+				ts = 0
+			}
+		}
+	}
+
+	ss := fmt.Sprintf("%.3f", ts)
+	cmd := exec.Command("ffmpeg", "-y", "-i", videoPath, "-ss", ss, "-vframes", "1", thumbPath)
+	if err := cmd.Run(); err != nil {
+		fallback := exec.Command("ffmpeg", "-y", "-i", videoPath, "-ss", "0", "-vframes", "1", thumbPath)
+		if ferr := fallback.Run(); ferr != nil {
+			return "", fmt.Errorf("ffmpeg poster generation failed (primary: %v, fallback: %v)", err, ferr)
+		}
+	}
+
+	if LogFunc != nil {
+		LogFunc(thumbPath, 0, "image/jpeg")
+	}
+	return thumbName, nil
+}
+
+// -------------------------
+// Image Normalization
+// -------------------------
+
+func normalizeImageFormat(fullPath, ext string, img image.Image) (string, error) {
+	if ext == ".png" {
+		return fullPath, nil
+	}
+	pngPath := strings.TrimSuffix(fullPath, ext) + ".png"
+	out, err := os.Create(pngPath)
+	if err != nil {
+		return fullPath, fmt.Errorf("create png %s: %w", pngPath, err)
+	}
+	defer out.Close()
+	if err := png.Encode(out, img); err != nil {
+		_ = os.Remove(pngPath)
+		return fullPath, fmt.Errorf("encode png: %w", err)
+	}
+	_ = os.Remove(fullPath)
+	return pngPath, nil
+}
+
+// -------------------------
+// File Validation & Writing
+// -------------------------
+
+func writeValidatedFile(reader io.Reader, header *multipart.FileHeader, destDir string, picType PictureType, maxSize int64) (string, string, string, error) {
 	ext := strings.ToLower(filepath.Ext(header.Filename))
-	picType := detectPicType(destDir)
-	if picType == "" {
-		return "", fmt.Errorf("unknown picture type for folder: %s", destDir)
-	}
-
 	if !isExtensionAllowed(ext, picType) {
-		return "", fmt.Errorf("%w: %s for %s", ErrInvalidExtension, ext, picType)
+		return "", "", "", fmt.Errorf("%w: %s for %s", ErrInvalidExtension, ext, picType)
 	}
 
-	// Peek first 512 bytes for MIME detection
 	buf := make([]byte, 512)
 	n, err := io.ReadFull(io.LimitReader(reader, 512), buf)
 	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-		return "", fmt.Errorf("read header: %w", err)
+		return "", "", "", fmt.Errorf("read header: %w", err)
 	}
 
 	mimeType := strings.ToLower(http.DetectContentType(buf[:n]))
@@ -48,170 +339,64 @@ func SaveFile(
 	}
 
 	if !isMIMEAllowed(mimeType, picType) {
-		return "", fmt.Errorf("%w: %s for %s", ErrInvalidMIME, mimeType, picType)
+		return "", "", "", fmt.Errorf("%w: %s for %s", ErrInvalidMIME, mimeType, picType)
 	}
-
 	if !extMatchesMIME(ext, mimeType, picType) {
-		return "", fmt.Errorf("extension %s does not match MIME type %s for %s", ext, mimeType, picType)
+		return "", "", "", fmt.Errorf("extension %s does not match MIME type %s for %s", ext, mimeType, picType)
 	}
 
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
-		return "", fmt.Errorf("mkdir %s: %w", destDir, err)
+		return "", "", "", fmt.Errorf("mkdir %s: %w", destDir, err)
 	}
 
-	filename := getSafeFilename(header.Filename, ext, customNameFn)
-	fullPath := filepath.Join(destDir, filename)
+	// --- updated part ---
+	filenameOnly, safeExt := getSafeFilename(header.Filename, ext, nil)
+	fullPath := filepath.Join(destDir, filenameOnly+safeExt)
+	// --- end update ---
 
 	out, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
-		return "", fmt.Errorf("create %s: %w", fullPath, err)
+		return "", "", "", fmt.Errorf("create %s: %w", fullPath, err)
 	}
 	defer out.Close()
 
-	// write initial bytes we already peeked
 	if _, err := out.Write(buf[:n]); err != nil {
-		return "", fmt.Errorf("write header: %w", err)
+		return "", "", "", fmt.Errorf("write header: %w", err)
 	}
-
 	written, err := io.Copy(out, io.LimitReader(reader, maxSize-int64(n)))
 	if err != nil {
-		return "", fmt.Errorf("write body: %w", err)
+		return "", "", "", fmt.Errorf("write body: %w", err)
 	}
-
 	totalWritten := written + int64(n)
 	if maxSize > 0 && totalWritten > maxSize {
 		_ = os.Remove(fullPath)
-		return "", ErrFileTooLarge
+		return "", "", "", ErrFileTooLarge
 	}
 
-	// Virus scan after full file present
 	if err := ScanForViruses(fullPath); err != nil {
 		_ = os.Remove(fullPath)
-		return "", fmt.Errorf("virus scan failed: %w", err)
-	}
-
-	// Log via LogFunc if present
-	if LogFunc != nil {
-		LogFunc(filename, totalWritten, mimeType)
-	}
-
-	return filename, nil
-}
-
-// Convenience functions for saving form files
-func SaveFormFile(r *multipart.Form, formKey string, entity EntityType, picType PictureType, required bool) (string, error) {
-	files := r.File[formKey]
-	if len(files) == 0 {
-		if required {
-			return "", fmt.Errorf("missing required file: %s", formKey)
-		}
-		return "", nil
-	}
-	file, err := files[0].Open()
-	if err != nil {
-		return "", fmt.Errorf("open %s: %w", formKey, err)
-	}
-	return SaveFileForEntity(file, files[0], entity, picType)
-}
-
-func SaveFormFiles(form *multipart.Form, formKey string, entity EntityType, picType PictureType, required bool) ([]string, error) {
-	files := form.File[formKey]
-	if len(files) == 0 {
-		if required {
-			return nil, fmt.Errorf("missing required files: %s", formKey)
-		}
-		return nil, nil
-	}
-	var saved []string
-	var errs []string
-	for _, hdr := range files {
-		file, err := hdr.Open()
-		if err != nil {
-			errs = append(errs, fmt.Sprintf("open %s: %v", hdr.Filename, err))
-			continue
-		}
-		name, err := SaveFileForEntity(file, hdr, entity, picType)
-		if err != nil {
-			errs = append(errs, fmt.Sprintf("save %s: %v", hdr.Filename, err))
-			continue
-		}
-		saved = append(saved, name)
-	}
-	if len(errs) > 0 {
-		return saved, fmt.Errorf("errors saving files: %s", strings.Join(errs, "; "))
-	}
-	return saved, nil
-}
-
-func SaveFormFilesByKeys(form *multipart.Form, keys []string, entityType EntityType, pictureType PictureType, required bool) ([]string, error) {
-	var urls []string
-	var errs []string
-	for _, key := range keys {
-		partial, err := SaveFormFiles(form, key, entityType, pictureType, required)
-		if err != nil {
-			errs = append(errs, fmt.Sprintf("%s: %v", key, err))
-		}
-		urls = append(urls, partial...)
-	}
-	if len(errs) > 0 {
-		return urls, fmt.Errorf("errors: %s", strings.Join(errs, "; "))
-	}
-	return urls, nil
-}
-
-// SaveImageWithThumb saves an image, validates dimensions and creates a thumbnail; returns image name and thumbnail name (if created).
-func SaveImageWithThumb(file multipart.File, header *multipart.FileHeader, entity EntityType, picType PictureType, thumbWidth int, userid string) (string, string, error) {
-	defer file.Close()
-
-	origPath := ResolvePath(entity, picType)
-	origName, err := SaveFile(file, header, origPath, maxUploadSize, nil)
-	if err != nil {
-		return "", "", fmt.Errorf("save original: %w", err)
-	}
-
-	fullPath := filepath.Join(origPath, origName)
-
-	f, err := os.Open(fullPath)
-	if err != nil {
-		return origName, "", fmt.Errorf("open for decode: %w", err)
-	}
-	img, _, err := image.Decode(f)
-	_ = f.Close()
-	if err != nil {
-		return origName, "", fmt.Errorf("decode %q: %w", header.Filename, err)
-	}
-
-	// Normalize to PNG
-	ext := strings.ToLower(filepath.Ext(fullPath))
-	newPath, err := normalizeImageFormat(fullPath, ext, img)
-	if err != nil {
-		return origName, "", err
-	}
-	if newPath != fullPath {
-		fullPath = newPath
-		origName = filepath.Base(newPath)
-	}
-
-	if err := ValidateImageDimensions(img, 3000, 3000); err != nil {
-		return origName, "", fmt.Errorf("invalid image %q: %w", header.Filename, err)
-	}
-
-	// Notify MQ (best-effort)
-	go func(p, ent, name, pt, uid string) {
-		_ = mq.NotifyImageSaved(p, ent, name, pt, uid)
-	}(fullPath, string(entity), origName, string(picType), userid)
-
-	// Thumbnail creation (JPEG only)
-	if img.Bounds().Dx() > thumbWidth || img.Bounds().Dy() > thumbWidth {
-		thumbName := userid + ".jpg"
-		if err := generateThumbnail(img, entity, thumbName, thumbWidth); err != nil {
-			return origName, "", fmt.Errorf("thumbnail failed: %w", err)
-		}
-		return origName, thumbName, nil
+		return "", "", "", fmt.Errorf("virus scan failed: %w", err)
 	}
 
 	if LogFunc != nil {
-		LogFunc(origName, 0, "image/png")
+		LogFunc(filenameOnly+safeExt, totalWritten, mimeType)
 	}
-	return origName, "", nil
+	return filenameOnly, safeExt, fullPath, nil
+}
+
+// -------------------------
+// Utilities
+// -------------------------
+
+func generateUniqueID() string {
+	return fmt.Sprintf("%d", time.Now().UnixNano())
+}
+
+func isVideoExt(ext string) bool {
+	switch strings.ToLower(ext) {
+	case ".mp4", ".mov", ".mkv", ".webm", ".avi", ".flv", ".m4v":
+		return true
+	default:
+		return false
+	}
 }
