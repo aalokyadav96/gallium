@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"naevis/db"
+	"naevis/globals"
 	"naevis/middleware"
 	"naevis/models"
 	"naevis/mq"
@@ -25,15 +26,11 @@ import (
 )
 
 const (
-	refreshTokenTTL = 7 * 24 * time.Hour // 7 days
-	// accessTokenTTL  = 15 * time.Minute   // 15 minutes
+	RefreshTokenTTL = 7 * 24 * time.Hour // 7 days
+	AccessTokenTTL  = 24 * time.Hour     // 15 minutes
 )
 
-var (
-	// tokenSigningAlgo = jwt.SigningMethodHS256
-	jwtSecret = []byte("your_secret_key") // Replace with a secure secret key
-)
-
+// ===== LOGIN =====
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	var user models.User
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
@@ -48,38 +45,33 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// // Check if verified
-	// if !storedUser.EmailVerified {
-	// 	http.Error(w, "User not verified. Please check your email for the OTP.", http.StatusUnauthorized)
-	// 	return
-	// }
-
-	// Check password
 	if err := bcrypt.CompareHashAndPassword([]byte(storedUser.Password), []byte(user.Password)); err != nil {
 		http.Error(w, "Invalid username or password", http.StatusUnauthorized)
 		return
 	}
 
-	// Generate JWT
+	// Generate access token
 	claims := &middleware.Claims{
 		Username: storedUser.Username,
 		UserID:   storedUser.UserID,
-		Role:     storedUser.Role, // assumes Role []string exists in your models.User
+		Role:     storedUser.Role,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(12 * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(AccessTokenTTL)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString(jwtSecret)
+	access := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	accessToken, err := access.SignedString(globals.JwtSecret)
 	if err != nil {
+		log.Printf("login: failed to sign access token: %v", err)
 		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
 		return
 	}
 
-	// Generate refresh token
+	// Generate refresh token (raw), store only hash in DB
 	refreshToken, err := generateRefreshToken()
 	if err != nil {
+		log.Printf("login: failed to generate refresh token: %v", err)
 		http.Error(w, "Error generating refresh token", http.StatusInternalServerError)
 		return
 	}
@@ -90,23 +82,36 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		bson.M{"userid": storedUser.UserID},
 		bson.M{"$set": bson.M{
 			"refresh_token":  hashedRefresh,
-			"refresh_expiry": time.Now().Add(refreshTokenTTL),
+			"refresh_expiry": time.Now().Add(RefreshTokenTTL),
 			"last_login":     time.Now(),
 		}},
 	)
 	if err != nil {
+		log.Printf("login: failed to store refresh token in DB for user %s: %v", storedUser.UserID, err)
 		http.Error(w, "Failed to store refresh token", http.StatusInternalServerError)
 		return
 	}
 
-	// Return tokens
+	// Set refresh token as a secure, HttpOnly cookie. Path is "/" so refresh endpoint receives it.
+	// Secure: true for production (HTTPS). If testing locally over HTTP, set Secure false temporarily.
+	http.SetCookie(w, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    refreshToken,
+		Path:     "/", // cookie available across your API; restrict if you need more granularity
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+		Expires:  time.Now().Add(RefreshTokenTTL),
+	})
+
+	// Return access token and user id; refresh token is kept in cookie only
 	utils.SendResponse(w, http.StatusOK, map[string]string{
-		"token":        tokenString,
-		"refreshToken": refreshToken,
-		"userid":       storedUser.UserID,
+		"token":  accessToken,
+		"userid": storedUser.UserID,
 	}, "Login successful", nil)
 }
 
+// ===== REGISTER =====
 func registerHandler(w http.ResponseWriter, r *http.Request) {
 	var user models.User
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
@@ -130,52 +135,35 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 	// Hash password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
-		log.Printf("Failed to hash password for user %s: %v", user.Username, err)
+		log.Printf("Failed to hash password: %v", err)
 		http.Error(w, "Failed to hash password", http.StatusInternalServerError)
 		return
 	}
 	user.Password = string(hashedPassword)
 	user.UserID = "u" + utils.GenerateRandomString(10)
-	// user.EmailVerified = false
 	user.EmailVerified = true
 	user.Role = []string{"user"}
-
-	// // Generate OTP and send email
-	// otp := generateOTP(6)
-	// err = sendEmailOTP(user.Email, otp)
-	// if err != nil {
-	// 	log.Printf("Failed to send OTP email: %v", err)
-	// 	http.Error(w, "Failed to send OTP", http.StatusInternalServerError)
-	// 	return
-	// }
-
-	// // Store OTP in Redis (expires in 10 minutes)
-	// err = rdx.SetWithExpiry("otp:"+user.Email, otp, 10*time.Minute)
-	// if err != nil {
-	// 	log.Printf("Failed to cache OTP: %v", err)
-	// }
 
 	err = rdx.RdxSet(fmt.Sprintf("users:%s", user.UserID), user.Username)
 	if err != nil {
 		log.Printf("Failed to cache username: %v", err)
 	}
 
-	// Save user in DB (unverified)
 	_, err = db.UserCollection.InsertOne(context.TODO(), user)
 	if err != nil {
+		log.Printf("register: failed to insert user %s: %v", user.Username, err)
 		http.Error(w, "Failed to register user", http.StatusInternalServerError)
 		return
 	}
 
-	// Optional: Emit to MQ, cache user ID, etc.
-
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]any{
 		"status":  http.StatusCreated,
-		"message": "OTP sent to email. Please verify to complete registration.",
+		"message": "User registered successfully.",
 	})
 }
 
+// ===== LOGOUT =====
 func logoutUserHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	tokenString := r.Header.Get("Authorization")
@@ -189,25 +177,44 @@ func logoutUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract the token and invalidate it in Redis
-	tokenString = tokenString[7:]
 	claims := &middleware.Claims{}
-	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
-		return jwtSecret, nil
+	_, err := jwt.ParseWithClaims(tokenString[7:], claims, func(token *jwt.Token) (any, error) {
+		return globals.JwtSecret, nil
 	})
-
-	if err != nil || !token.Valid {
+	if err != nil {
 		http.Error(w, "Invalid token", http.StatusUnauthorized)
 		return
 	}
 
-	// Remove token from Redis cache
-	_, err = rdx.RdxHdel("tokki", claims.UserID)
+	// Clear refresh token in DB
+	_, err = db.UserCollection.UpdateOne(
+		context.TODO(),
+		bson.M{"userid": claims.UserID},
+		bson.M{"$unset": bson.M{
+			"refresh_token":  "",
+			"refresh_expiry": "",
+		}},
+	)
 	if err != nil {
-		log.Printf("Error removing token from Redis: %v", err)
+		log.Printf("logout: failed to clear refresh token for user %s: %v", claims.UserID, err)
 		http.Error(w, "Failed to log out", http.StatusInternalServerError)
 		return
 	}
+
+	// Remove any cached access token from Redis (optional)
+	_, _ = rdx.RdxHdel("tokki", claims.UserID)
+
+	// Clear refresh token cookie client-side by setting an expired cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+		Expires:  time.Unix(0, 0),
+		MaxAge:   -1,
+	})
 
 	m := models.Index{}
 	mq.Emit(ctx, "user-loggedout", m)
@@ -215,52 +222,106 @@ func logoutUserHandler(w http.ResponseWriter, r *http.Request) {
 	utils.SendResponse(w, http.StatusOK, nil, "User logged out successfully", nil)
 }
 
+// ===== REFRESH TOKEN =====
+// This endpoint reads the refresh token from the HttpOnly cookie, verifies it (by comparing hashed value in DB),
+// rotates the refresh token and sets the new cookie, and returns a new short-lived access token.
 func refreshTokenHandler(w http.ResponseWriter, r *http.Request) {
-	tokenString := r.Header.Get("Authorization")
-	if tokenString == "" {
-		http.Error(w, "Missing token", http.StatusUnauthorized)
+	cookie, err := r.Cookie("refresh_token")
+	if err != nil {
+		http.Error(w, "Missing refresh token", http.StatusUnauthorized)
+		return
+	}
+	refreshToken := cookie.Value
+
+	if refreshToken == "" {
+		http.Error(w, "Missing refresh token", http.StatusUnauthorized)
 		return
 	}
 
-	if len(tokenString) < 7 || tokenString[:7] != "Bearer " {
-		http.Error(w, "Invalid token format", http.StatusUnauthorized)
+	// Find user by hashed refresh token
+	hashed := hashToken(refreshToken)
+	var storedUser models.User
+	err = db.UserCollection.FindOne(
+		context.TODO(),
+		bson.M{"refresh_token": hashed},
+	).Decode(&storedUser)
+	if err != nil {
+		// Do not reveal whether token missing or DB error
+		log.Printf("refresh: refresh token lookup failed: %v", err)
+		http.Error(w, "Invalid or expired refresh token", http.StatusUnauthorized)
 		return
 	}
 
-	tokenString = tokenString[7:]
-	claims := &middleware.Claims{}
-	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
-		return jwtSecret, nil
+	// Check expiry
+	if time.Now().After(storedUser.RefreshExpiry) {
+		// Clear DB stale refresh token
+		_, _ = db.UserCollection.UpdateOne(context.TODO(), bson.M{"userid": storedUser.UserID}, bson.M{"$unset": bson.M{
+			"refresh_token":  "",
+			"refresh_expiry": "",
+		}})
+		http.Error(w, "Invalid or expired refresh token", http.StatusUnauthorized)
+		return
+	}
+
+	// New access token
+	claims := &middleware.Claims{
+		Username: storedUser.Username,
+		UserID:   storedUser.UserID,
+		Role:     storedUser.Role,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(AccessTokenTTL)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+	newAccess := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	accessToken, err := newAccess.SignedString(globals.JwtSecret)
+	if err != nil {
+		log.Printf("refresh: failed to sign new access token for user %s: %v", storedUser.UserID, err)
+		http.Error(w, "Failed to generate access token", http.StatusInternalServerError)
+		return
+	}
+
+	// Rotate refresh token (single-use)
+	newRefresh, err := generateRefreshToken()
+	if err != nil {
+		log.Printf("refresh: failed to generate new refresh token for user %s: %v", storedUser.UserID, err)
+		http.Error(w, "Failed to generate refresh token", http.StatusInternalServerError)
+		return
+	}
+	hashedNewRefresh := hashToken(newRefresh)
+
+	_, err = db.UserCollection.UpdateOne(
+		context.TODO(),
+		bson.M{"userid": storedUser.UserID},
+		bson.M{"$set": bson.M{
+			"refresh_token":  hashedNewRefresh,
+			"refresh_expiry": time.Now().Add(RefreshTokenTTL),
+		}},
+	)
+	if err != nil {
+		log.Printf("refresh: failed to update refresh token in DB for user %s: %v", storedUser.UserID, err)
+		http.Error(w, "Failed to update refresh token", http.StatusInternalServerError)
+		return
+	}
+
+	// Set rotated refresh token cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    newRefresh,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+		Expires:  time.Now().Add(RefreshTokenTTL),
 	})
 
-	if err != nil || !token.Valid {
-		http.Error(w, "Invalid token", http.StatusUnauthorized)
-		return
-	}
-
-	// Ensure the token is not expired and refresh it
-	if time.Until(claims.ExpiresAt.Time) < 30*time.Minute {
-		claims.ExpiresAt = jwt.NewNumericDate(time.Now().Add(72 * time.Hour)) // Extend the expiration
-		newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-		newTokenString, err := newToken.SignedString(jwtSecret)
-		if err != nil {
-			http.Error(w, "Failed to refresh token", http.StatusInternalServerError)
-			return
-		}
-
-		// Update the token in Redis
-		err = rdx.RdxHset("tokki", claims.UserID, newTokenString)
-		if err != nil {
-			log.Printf("Error updating token in Redis: %v", err)
-		}
-
-		utils.SendResponse(w, http.StatusOK, map[string]string{"token": newTokenString}, "Token refreshed successfully", nil)
-	} else {
-		http.Error(w, "Token refresh not allowed yet", http.StatusForbidden)
-	}
+	utils.SendResponse(w, http.StatusOK, map[string]string{
+		"token":  accessToken,
+		"userid": storedUser.UserID,
+	}, "Token refreshed successfully", nil)
 }
 
-// Generates a random refresh token
+// ===== HELPERS =====
 func generateRefreshToken() (string, error) {
 	tokenBytes := make([]byte, 32)
 	_, err := rand.Read(tokenBytes)
@@ -270,7 +331,6 @@ func generateRefreshToken() (string, error) {
 	return hex.EncodeToString(tokenBytes), nil
 }
 
-// Hashes a given token
 func hashToken(token string) string {
 	hash := sha256.New()
 	hash.Write([]byte(token))

@@ -28,7 +28,6 @@ var (
 	CropsCollection             *mongo.Collection
 	CommentsCollection          *mongo.Collection
 	HashtagCollection           *mongo.Collection
-	RoomsCollection             *mongo.Collection
 	UserCollection              *mongo.Collection
 	TransactionCollection       *mongo.Collection
 	LikesCollection             *mongo.Collection
@@ -46,13 +45,11 @@ var (
 	PlacesCollection            *mongo.Collection
 	SlotCollection              *mongo.Collection
 	DateCapsCollection          *mongo.Collection
-	ConfigsCollection           *mongo.Collection
 	BookingsCollection          *mongo.Collection
 	PostsCollection             *mongo.Collection
 	BlogPostsCollection         *mongo.Collection
 	FilesCollection             *mongo.Collection
 	MerchCollection             *mongo.Collection
-	LoopsCollection             *mongo.Collection
 	MenuCollection              *mongo.Collection
 	ActivitiesCollection        *mongo.Collection
 	EventsCollection            *mongo.Collection
@@ -63,13 +60,9 @@ var (
 	ArtistsCollection           *mongo.Collection
 	ChatsCollection             *mongo.Collection
 	MessagesCollection          *mongo.Collection
-	QuestionCollection          *mongo.Collection
-	AnswerCollection            *mongo.Collection
 	ReportsCollection           *mongo.Collection
 	RecipeCollection            *mongo.Collection
 	BaitoCollection             *mongo.Collection
-	JobApplicationsCollection   *mongo.Collection
-	JobsCollection              *mongo.Collection
 	ModeratorApplications       *mongo.Collection
 	BaitoApplicationsCollection *mongo.Collection
 	BaitoWorkerCollection       *mongo.Collection
@@ -128,7 +121,6 @@ func init() {
 	AccountsCollection = db.Collection("accounts")
 	ActivitiesCollection = db.Collection("activities")
 	AnalyticsCollection = db.Collection("analytics")
-	AnswerCollection = db.Collection("answers")
 	AppealsCollection = db.Collection("appeals")
 	ArtistEventsCollection = db.Collection("artistevents")
 	ArtistsCollection = db.Collection("artists")
@@ -142,7 +134,6 @@ func init() {
 	CatalogueCollection = db.Collection("catalogue")
 	ChatsCollection = db.Collection("chats")
 	CommentsCollection = db.Collection("comments")
-	ConfigsCollection = db.Collection("configs")
 	CouponCollection = db.Collection("coupons")
 	CropsCollection = db.Collection("crops")
 	DateCapsCollection = db.Collection("date_caps")
@@ -155,11 +146,8 @@ func init() {
 	HashtagCollection = db.Collection("hashtags")
 	IdempotencyCollection = db.Collection("idempotency")
 	ItineraryCollection = db.Collection("itinerary")
-	JobApplicationsCollection = db.Collection("jobapplics")
-	JobsCollection = db.Collection("jobs")
 	JournalCollection = db.Collection("journals")
 	LikesCollection = db.Collection("likes")
-	LoopsCollection = db.Collection("loops")
 	MapsCollection = db.Collection("maps")
 	MediaCollection = db.Collection("media")
 	MenuCollection = db.Collection("menu")
@@ -171,10 +159,8 @@ func init() {
 	ProductCollection = db.Collection("products")
 	PurchasedTicketsCollection = db.Collection("purticks")
 	RecipeCollection = db.Collection("recipes")
-	QuestionCollection = db.Collection("questions")
 	ReportsCollection = db.Collection("reports")
 	ReviewsCollection = db.Collection("reviews")
-	RoomsCollection = db.Collection("rooms")
 	ServiceCollection = db.Collection("service")
 	SettingsCollection = db.Collection("settings")
 	SlotCollection = db.Collection("slots")

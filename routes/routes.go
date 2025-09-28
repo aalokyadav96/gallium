@@ -288,7 +288,6 @@ func AddAuthRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) 
 	router.POST("/api/v1/auth/register", rateLimiter.Limit(auth.Register))
 	router.POST("/api/v1/auth/login", rateLimiter.Limit(auth.Login))
 	router.POST("/api/v1/auth/logout", middleware.Authenticate(auth.LogoutUser))
-	router.POST("/api/v1/auth/token/refresh", rateLimiter.Limit(middleware.Authenticate(auth.RefreshToken)))
 
 	router.POST("/api/v1/auth/verify-otp", rateLimiter.Limit(auth.VerifyOTPHandler))
 	// router.POST("/api/v1/auth/request-otp", rateLimiter.Limit(auth.RequestOTPHandler)) // FIX: Should request OTP, not verify

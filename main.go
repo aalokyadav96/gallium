@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -26,14 +27,61 @@ func Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	fmt.Fprint(w, "200")
 }
 
-// setupRouter builds the router with all routes except chat.
-// The chat routes will be added separately in main to avoid passing hub around globally.
+// setupRouter builds the router with all API routes except chat.
 func setupRouter(rateLimiter *ratelim.RateLimiter) *httprouter.Router {
 	router := httprouter.New()
 	router.GET("/health", Index)
-	routes.AddStaticRoutes(router)
 	routes.RoutesWrapper(router, rateLimiter)
 	return router
+}
+
+func parseAllowedOrigins(env string) []string {
+	if env == "" {
+		return []string{"http://localhost:5173"}
+	}
+	parts := strings.Split(env, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// startStaticServer runs a separate HTTP server for public static files.
+func startStaticServer() {
+	staticRouter := httprouter.New()
+	routes.AddStaticRoutes(staticRouter)
+
+	staticServer := &http.Server{
+		Addr:              ":4001",
+		Handler:           staticRouter,
+		ReadTimeout:       5 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		ReadHeaderTimeout: 2 * time.Second,
+	}
+
+	go func() {
+		log.Println("🚀 Static server running on http://localhost:4001")
+		if err := staticServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Static server error: %v", err)
+		}
+	}()
+
+	// graceful shutdown for static server
+	go func() {
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+		<-sigCh
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		staticServer.Shutdown(ctx)
+		log.Println("✅ Static server stopped")
+	}()
 }
 
 func main() {
@@ -45,10 +93,13 @@ func main() {
 	// read port
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = ":10000"
+		port = ":4000"
 	} else if port[0] != ':' {
 		port = ":" + port
 	}
+
+	// parse allowed origins
+	allowedOrigins := parseAllowedOrigins(os.Getenv("ALLOWED_ORIGINS"))
 
 	// initialize rate limiter
 	rateLimiter := ratelim.NewRateLimiter(1, 6, 10*time.Minute, 10000)
@@ -57,54 +108,57 @@ func main() {
 	hub := newchat.NewHub()
 	go hub.Run()
 
-	// build router and add chat routes with hub
+	// build API router and add chat routes
 	router := setupRouter(rateLimiter)
 	routes.AddNewChatRoutes(router, hub, rateLimiter)
 
-	// apply middleware: CORS → security headers → logging → router
+	// Middleware chain: Logging + SecurityHeaders -> router
+	innerHandler := middleware.LoggingMiddleware(middleware.SecurityHeaders(router))
+
+	// CORS must be applied outermost when using credentials
 	corsHandler := cors.New(cors.Options{
-		AllowedOrigins:   []string{"*"}, // lock down in production
+		AllowedOrigins:   allowedOrigins,
 		AllowedMethods:   []string{"HEAD", "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Content-Type", "Authorization", "Idempotency-Key"},
+		AllowedHeaders:   []string{"Content-Type", "Authorization", "Idempotency-Key", "X-Requested-With"},
 		AllowCredentials: true,
-	}).Handler(router)
+	}).Handler(innerHandler)
 
-	handler := middleware.LoggingMiddleware(middleware.SecurityHeaders(corsHandler))
-
-	// create HTTP server
+	// create API HTTP server
 	server := &http.Server{
 		Addr:              port,
-		Handler:           handler,
+		Handler:           corsHandler,
 		ReadTimeout:       7 * time.Second,
 		WriteTimeout:      15 * time.Second,
 		IdleTimeout:       120 * time.Second,
 		ReadHeaderTimeout: 2 * time.Second,
 	}
 
-	// start indexing worker in background
+	// start workers
 	go mq.StartIndexingWorker()
 	go mq.StartHashtagWorker()
 
-	// on shutdown: stop chat hub, cleanup
+	// start static server
+	startStaticServer()
+
+	// graceful shutdown for API server
 	server.RegisterOnShutdown(func() {
-		log.Println("🛑 Shutting down...")
+		log.Println("🛑 Shutting down chat hub...")
 		hub.Stop()
 	})
 
-	// start server
+	// start API server
 	go func() {
-		log.Printf("🚀 Server listening on %s", port)
+		log.Printf("🚀 API server listening on %s", port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("❌ ListenAndServe error: %v", err)
+			log.Fatalf("❌ API ListenAndServe error: %v", err)
 		}
 	}()
 
-	// wait for interrupt or SIGTERM
+	// wait for shutdown signals
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	<-sigCh
 
-	// initiate graceful shutdown
 	log.Println("🛑 Shutdown signal received; shutting down gracefully...")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -113,18 +167,5 @@ func main() {
 		log.Fatalf("❌ Graceful shutdown failed: %v", err)
 	}
 
-	log.Println("✅ Server stopped cleanly")
+	log.Println("✅ API server stopped cleanly")
 }
-
-/*
-func withCSP(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'")
-		next.ServeHTTP(w, r)
-	})
-}
-router := httprouter.New()
-wrapped := withCSP(router)
-log.Fatal(http.ListenAndServe(":8080", wrapped))
-
-*/

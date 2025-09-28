@@ -2,12 +2,6 @@ package globals
 
 import (
 	"context"
-	"time"
-)
-
-const (
-	RefreshTokenTTL = 7 * 24 * time.Hour // 7 days
-	AccessTokenTTL  = 15 * time.Minute   // 15 minutes
 )
 
 var (

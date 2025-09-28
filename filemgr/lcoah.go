@@ -151,9 +151,16 @@ func saveFileAndProcess(file multipart.File, header *multipart.FileHeader, entit
 	}
 
 	if isImageType(picType) {
-		if err := processImage(fullPath, entity, picType, thumbWidth, userid); err != nil {
+		thumbName := userid
+		if thumbName == "" {
+			thumbName = filename
+		}
+		if err := processImage(fullPath, entity, picType, thumbWidth, thumbName, ext); err != nil {
 			return filename, ext, err
 		}
+		// if err := processImage(fullPath, entity, picType, thumbWidth, filename, ext); err != nil {
+		// 	return filename, ext, err
+		// }
 	} else if picType == PicVideo || isVideoExt(ext) {
 		go func(vpath string, ent EntityType, fname string) {
 			if thumb, err := generateVideoPoster(vpath, ent, fname); err != nil {
@@ -173,7 +180,7 @@ func saveFileAndProcess(file multipart.File, header *multipart.FileHeader, entit
 // Image/Video Processing
 // -------------------------
 
-func processImage(fullPath string, entity EntityType, picType PictureType, thumbWidth int, uid string) error {
+func processImage(fullPath string, entity EntityType, picType PictureType, thumbWidth int, filename, ext string) error {
 	img, _, err := openImage(fullPath)
 	if err != nil {
 		if LogFunc != nil {
@@ -182,7 +189,6 @@ func processImage(fullPath string, entity EntityType, picType PictureType, thumb
 		return nil // best-effort
 	}
 
-	ext := strings.ToLower(filepath.Ext(fullPath))
 	newPath, err := normalizeImageFormat(fullPath, ext, img)
 	if err != nil {
 		return err
@@ -192,13 +198,13 @@ func processImage(fullPath string, entity EntityType, picType PictureType, thumb
 	}
 
 	// MQ notification
-	go notifyImageSaved(fullPath, entity, filepath.Base(fullPath), picType, uid)
+	go notifyImageSaved(fullPath, entity, filepath.Base(fullPath), picType, filename)
 
 	// Thumbnail
 	imgCopy := imaging.Clone(img)
 	go func() {
 		// thumbName := filepath.Base(fullPath)
-		thumbName := uid + ".jpg"
+		thumbName := filename + ".jpg"
 		if err := generateThumbnail(imgCopy, entity, thumbName, thumbWidth); err != nil && LogFunc != nil {
 			LogFunc(fmt.Sprintf("warning: thumbnail failed for %s: %v", thumbName, err), 0, "")
 		}

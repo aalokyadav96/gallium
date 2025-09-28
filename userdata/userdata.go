@@ -187,19 +187,19 @@ func GetOtherUserProfileData(w http.ResponseWriter, r *http.Request, ps httprout
 	const res string = `[
 		{
 		  "id": "post_001",
-		  "image_url": "https://i.pinimg.com/736x/28/f5/b9/28f5b9cb0281e66944d2b5834283122f.jpg",
+		  "image_url": "https://i.pinimg.com/1200x/41/6a/dd/416add5d8b8f0ea89bbcd78ef4471866.jpg",
 		  "caption": "Sunset in Bali",
 		  "created_at": "2025-05-19T12:34:56Z"
 		},
 		{
 		  "id": "post_002",
-		  "image_url": "https://i.pinimg.com/1200x/ce/82/e6/ce82e6d888a9397f32ad104959275555.jpg",
+		  "image_url": "https://i.pinimg.com/736x/28/f5/b9/28f5b9cb0281e66944d2b5834283122f.jpg",
 		  "caption": "Coffee time",
 		  "created_at": "2025-05-18T08:12:44Z"
 		},
 		{
 		  "id": "post_003",
-		  "image_url": "https://i.pinimg.com/736x/dc/59/e8/dc59e800d22ee97ec67b3ad87b0b8277.jpg",
+		  "image_url": "https://i.pinimg.com/736x/ce/a1/6a/cea16abe291fde62df608ed9460c99a1.jpg",
 		  "caption": "City lights",
 		  "created_at": "2025-05-17T21:09:13Z"
 		}

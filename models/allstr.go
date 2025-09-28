@@ -32,6 +32,8 @@ type User struct {
 	FollowersCount int               `json:"followerscount" bson:"followerscount"`
 	FollowingCount int               `json:"followscount" bson:"followscount"`
 	WalletBalance  float64           `bson:"wallet_balance" json:"wallet_balance"`
+	RefreshToken   string            `json:"-" bson:"refreshtoken,omitempty"`
+	RefreshExpiry  time.Time         `json:"refreshexp" bson:"refreshexp"`
 }
 
 // UserProfileResponse defines the structure for the user profile response
