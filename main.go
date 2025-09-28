@@ -37,7 +37,7 @@ func setupRouter(rateLimiter *ratelim.RateLimiter) *httprouter.Router {
 
 func parseAllowedOrigins(env string) []string {
 	if env == "" {
-		return []string{"http://localhost:5173"}
+		return []string{"http://localhost:5173", "https://indium.netlify.app"}
 	}
 	parts := strings.Split(env, ",")
 	out := make([]string, 0, len(parts))
@@ -65,7 +65,7 @@ func startStaticServer() {
 	}
 
 	go func() {
-		log.Println("🚀 Static server running on http://localhost:4001")
+		log.Println("?? Static server running on http://localhost:4001")
 		if err := staticServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Static server error: %v", err)
 		}
@@ -80,7 +80,7 @@ func startStaticServer() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		staticServer.Shutdown(ctx)
-		log.Println("✅ Static server stopped")
+		log.Println("? Static server stopped")
 	}()
 }
 
@@ -142,15 +142,15 @@ func main() {
 
 	// graceful shutdown for API server
 	server.RegisterOnShutdown(func() {
-		log.Println("🛑 Shutting down chat hub...")
+		log.Println("Shutting down chat hub...")
 		hub.Stop()
 	})
 
 	// start API server
 	go func() {
-		log.Printf("🚀 API server listening on %s", port)
+		log.Printf("API server listening on %s", port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("❌ API ListenAndServe error: %v", err)
+			log.Fatalf("? API ListenAndServe error: %v", err)
 		}
 	}()
 
@@ -159,13 +159,13 @@ func main() {
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	<-sigCh
 
-	log.Println("🛑 Shutdown signal received; shutting down gracefully...")
+	log.Println("Shutdown signal received; shutting down gracefully...")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := server.Shutdown(ctx); err != nil {
-		log.Fatalf("❌ Graceful shutdown failed: %v", err)
+		log.Fatalf("Graceful shutdown failed: %v", err)
 	}
 
-	log.Println("✅ API server stopped cleanly")
+	log.Println("API server stopped cleanly")
 }
