@@ -1,4 +1,4 @@
-package feed
+package filedrop
 
 import (
 	"fmt"
@@ -68,7 +68,6 @@ func processMediaUpload(r *http.Request, formKey string, mediaType MediaType, en
 	if err != nil {
 		return nil, err
 	}
-
 	return &MediaResult{
 		Resolutions: res,
 		Paths:       paths,
@@ -98,13 +97,13 @@ func saveUploadedFile(file *multipart.FileHeader, entity filemgr.EntityType, pic
 	}
 	defer src.Close()
 
-	savedName, err := filemgr.SaveFileForEntity(src, file, entity, picType)
+	savedName, ext, err := filemgr.SaveFileForEntity(src, file, entity, picType)
 	if err != nil {
 		return "", "", fmt.Errorf("file save failed: %w", err)
 	}
 
-	savedPath := filepath.Join(filemgr.ResolvePath(entity, picType), savedName)
-	uniqueID := strings.TrimSuffix(savedName, filepath.Ext(savedName))
+	savedPath := filepath.Join(filemgr.ResolvePath(entity, picType), savedName+ext)
+	uniqueID := strings.TrimSuffix(savedName, ext)
 	return savedPath, uniqueID, nil
 }
 

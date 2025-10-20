@@ -166,9 +166,9 @@ func UpdateProfileFields(r *http.Request, claims *middleware.Claims) (bson.M, er
 		update["password"] = string(hashed)
 	}
 
-	// (If you handle file uploads for profilePicture or bannerPicture,
+	// (If you handle file uploads for Avatar or bannerPicture,
 	//  you would process r.MultipartForm here and store the new file, then
-	//  include something like update["profilePicture"] = "<new URL>".
+	//  include something like update["Avatar"] = "<new URL>".
 	//  That is omitted unless you specifically need to handle files.)
 
 	// Notify a generic “profile-updated” event (payload is empty index here; fill as needed).

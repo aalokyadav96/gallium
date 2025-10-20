@@ -1,8 +1,6 @@
 package artists
 
 import (
-	"context"
-	"naevis/db"
 	"naevis/media"
 	"naevis/merch"
 	"naevis/models"
@@ -11,7 +9,6 @@ import (
 	_ "net/http/pprof"
 
 	"github.com/julienschmidt/httprouter"
-	"go.mongodb.org/mongo-driver/bson"
 )
 
 func GetArtistsAlbums(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
@@ -43,36 +40,4 @@ func GetArtistsevents(w http.ResponseWriter, r *http.Request, _ httprouter.Param
 		{Title: "Berlin Beats", Date: "2025-07-20", Venue: "Techno Temple", City: "Berlin", Country: "Germany"},
 	}
 	utils.RespondWithJSON(w, http.StatusOK, events)
-}
-
-func GetBTS(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	// Assuming artistID is passed as a URL parameter like /artists/:artistID/behindthescenes
-	artistID := ps.ByName("artistID")
-
-	// Fetch the behind-the-scenes content from the database
-	var content []models.BehindTheScenes // This is your data model for behind-the-scenes content
-	cursor, err := db.BehindTheScenesCollection.Find(context.TODO(), bson.M{"artistid": artistID})
-	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, "Error fetching behind-the-scenes content")
-		return
-	}
-	defer cursor.Close(context.TODO())
-
-	// Iterate over the cursor and append the content to the slice
-	for cursor.Next(context.TODO()) {
-		var btsItem models.BehindTheScenes
-		if err := cursor.Decode(&btsItem); err != nil {
-			utils.RespondWithError(w, http.StatusInternalServerError, "Error decoding behind-the-scenes content")
-			return
-		}
-		content = append(content, btsItem)
-	}
-
-	if err := cursor.Err(); err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, "Error fetching behind-the-scenes content")
-		return
-	}
-
-	// Respond with the fetched behind-the-scenes content
-	utils.RespondWithJSON(w, http.StatusOK, content)
 }

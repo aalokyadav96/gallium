@@ -19,6 +19,7 @@ const (
 	EntityPlace   EntityType = "place"
 	EntityMedia   EntityType = "media"
 	EntityFeed    EntityType = "feed"
+	EntityRecipe  EntityType = "recipe"
 	EntityProduct EntityType = "product"
 	EntityLoops   EntityType = "loops"
 

@@ -2,12 +2,11 @@ package artists
 
 import (
 	"context"
-	"fmt"
+	"encoding/json"
 	"net/http"
 	"time"
 
 	"naevis/db"
-	"naevis/filemgr"
 	"naevis/models"
 	"naevis/mq"
 	"naevis/utils"
@@ -22,37 +21,41 @@ func PostNewSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	ctx := r.Context()
 	artistID := ps.ByName("id")
 
-	if err := r.ParseMultipartForm(10 << 20); err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Invalid multipart form")
+	var payload struct {
+		Title       string `json:"title"`
+		Genre       string `json:"genre"`
+		Duration    string `json:"duration"`
+		Description string `json:"description"`
+		Audio       string `json:"audio"`
+		Poster      string `json:"poster"`
+		AudioExtn   string `json:"audioextn"`
+		PosterExtn  string `json:"posterextn"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid JSON body")
 		return
 	}
 
-	audioFile, err := filemgr.SaveFormFile(r.MultipartForm, "audio", filemgr.EntitySong, filemgr.PicAudio, true)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, err.Error())
+	if payload.Title == "" || payload.Genre == "" || payload.Duration == "" {
+		utils.RespondWithError(w, http.StatusBadRequest, "Missing required fields: title, genre, duration")
 		return
 	}
-
-	posterFile, err := filemgr.SaveFormFile(r.MultipartForm, "poster", filemgr.EntitySong, filemgr.PicPhoto, false)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	formFields, _ := collectSongFieldsFromForm(r)
 
 	newSong := models.ArtistSong{
 		SongID:      utils.GenerateRandomString(12),
 		ArtistID:    artistID,
-		Title:       formFields["title"],
-		Genre:       formFields["genre"],
-		Duration:    formFields["duration"],
-		Description: formFields["description"],
-		AudioURL:    audioFile,
-		Poster:      posterFile,
+		Title:       payload.Title,
+		Genre:       payload.Genre,
+		Duration:    payload.Duration,
+		Description: payload.Description,
+		AudioURL:    payload.Audio,
+		Poster:      payload.Poster,
 		Published:   true,
 		Plays:       0,
 		UploadedAt:  time.Now(),
+		AudioExtn:   payload.AudioExtn,
+		PosterExtn:  payload.PosterExtn,
 	}
 
 	filter := bson.M{"artistid": artistID}
@@ -62,12 +65,11 @@ func PostNewSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	}
 	opts := options.Update().SetUpsert(true)
 
-	if _, err := db.SongsCollection.UpdateOne(context.TODO(), filter, update, opts); err != nil {
+	if _, err := db.SongsCollection.UpdateOne(ctx, filter, update, opts); err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to add song to artist")
 		return
 	}
 
-	// ✅ Emit event for messaging queue (if needed)
 	go mq.Emit(ctx, "song-created", models.Index{
 		EntityType: "song", EntityId: newSong.SongID, Method: "POST",
 	})
@@ -84,35 +86,46 @@ func EditSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	if err := r.ParseMultipartForm(10 << 20); err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Invalid form data")
+	var payload struct {
+		Title       string `json:"title"`
+		Genre       string `json:"genre"`
+		Duration    string `json:"duration"`
+		Description string `json:"description"`
+		Audio       string `json:"audio"`
+		Poster      string `json:"poster"`
+		AudioExtn   string `json:"audioextn"`
+		PosterExtn  string `json:"posterextn"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		utils.RespondWithError(w, http.StatusBadRequest, "Invalid JSON body")
 		return
 	}
 
-	formFields, _ := collectSongFieldsFromForm(r)
 	updateFields := bson.M{}
-	for key, value := range formFields {
-		if value != "" {
-			updateFields["songs.$."+key] = value
-		}
+	if payload.Title != "" {
+		updateFields["songs.$.title"] = payload.Title
 	}
-
-	audioFile, err := filemgr.SaveFormFile(r.MultipartForm, "audio", filemgr.EntitySong, filemgr.PicAudio, false)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
-		return
+	if payload.Genre != "" {
+		updateFields["songs.$.genre"] = payload.Genre
 	}
-	if audioFile != "" {
-		updateFields["songs.$.audioUrl"] = audioFile
+	if payload.Duration != "" {
+		updateFields["songs.$.duration"] = payload.Duration
 	}
-
-	posterFile, err := filemgr.SaveFormFile(r.MultipartForm, "poster", filemgr.EntitySong, filemgr.PicPhoto, false)
-	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, err.Error())
-		return
+	if payload.Description != "" {
+		updateFields["songs.$.description"] = payload.Description
 	}
-	if posterFile != "" {
-		updateFields["songs.$.poster"] = posterFile
+	if payload.Audio != "" {
+		updateFields["songs.$.audioUrl"] = payload.Audio
+	}
+	if payload.AudioExtn != "" {
+		updateFields["songs.$.audioextn"] = payload.AudioExtn
+	}
+	if payload.Poster != "" {
+		updateFields["songs.$.poster"] = payload.Poster
+	}
+	if payload.PosterExtn != "" {
+		updateFields["songs.$.posterextn"] = payload.PosterExtn
 	}
 
 	if len(updateFields) == 0 {
@@ -123,28 +136,16 @@ func EditSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	filter := bson.M{"artistid": artistID, "songs.songid": songID}
 	update := bson.M{"$set": updateFields}
 
-	res, err := db.SongsCollection.UpdateOne(context.TODO(), filter, update)
+	res, err := db.SongsCollection.UpdateOne(ctx, filter, update)
 	if err != nil || res.MatchedCount == 0 {
 		utils.RespondWithError(w, http.StatusInternalServerError, "Failed to update song")
 		return
 	}
 
-	// ✅ Emit event for messaging queue (if needed)
 	go mq.Emit(ctx, "song-updated", models.Index{
 		EntityType: "song", EntityId: songID, Method: "PUT",
 	})
 	utils.RespondWithJSON(w, http.StatusOK, bson.M{"message": "Song updated successfully"})
-}
-
-// collectSongFieldsFromForm collects form fields for a song.
-func collectSongFieldsFromForm(r *http.Request) (map[string]string, error) {
-	fields := map[string]string{
-		"title":       r.FormValue("title"),
-		"genre":       r.FormValue("genre"),
-		"duration":    r.FormValue("duration"),
-		"description": r.FormValue("description"),
-	}
-	return fields, nil
 }
 
 // DeleteSong removes a song by its songid.
@@ -173,30 +174,4 @@ func DeleteSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		EntityType: "song", EntityId: songID, Method: "DELETE",
 	})
 	utils.RespondWithJSON(w, http.StatusOK, bson.M{"message": "Song deleted successfully"})
-}
-
-// GetArtistsSongs returns all published songs for an artist.
-// If no songs exist, returns an empty array.
-func GetArtistsSongs(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	artistID := ps.ByName("id")
-
-	var result struct {
-		Songs []models.ArtistSong `bson:"songs"`
-	}
-	fmt.Println("---------------------", artistID)
-	// ignore errors; result.Songs will be nil if no document found
-	err := db.SongsCollection.FindOne(context.TODO(), bson.M{"artistid": artistID}).Decode(&result)
-
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	filtered := make([]models.ArtistSong, 0, len(result.Songs))
-	for _, s := range result.Songs {
-		if s.Published {
-			filtered = append(filtered, s)
-		}
-	}
-
-	utils.RespondWithJSON(w, http.StatusOK, filtered)
 }

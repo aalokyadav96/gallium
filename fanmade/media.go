@@ -1,4 +1,4 @@
-package media
+package fanmade
 
 import (
 	"encoding/json"

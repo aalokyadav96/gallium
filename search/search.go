@@ -207,13 +207,13 @@ func ConvertToEntity(ctx context.Context, data interface{}) (Entity, error) {
 	case models.ArtistSong:
 		return Entity{EntityID: v.SongID, EntityType: "songs", Title: v.Title, Image: v.Poster, Description: v.Description, CreatedAt: parseTime(v.UploadedAt)}, nil
 	case models.User:
-		return Entity{EntityID: v.UserID, EntityType: "users", Title: v.Username, Image: v.ProfilePicture, Description: v.Bio, CreatedAt: parseTime(v.CreatedAt)}, nil
+		return Entity{EntityID: v.UserID, EntityType: "users", Title: v.Username, Image: v.Avatar, Description: v.Bio, CreatedAt: parseTime(v.CreatedAt)}, nil
 	case models.Recipe:
-		var img string
-		if len(v.ImageURLs) > 0 {
-			img = v.ImageURLs[0]
-		}
-		return Entity{EntityID: v.RecipeId, EntityType: "recipes", Title: v.Title, Image: img, Description: v.Description, CreatedAt: parseTime(v.CreatedAt)}, nil
+		// var img string
+		// if len(v.ImageURLs) > 0 {
+		// 	img = v.ImageURLs[0]
+		// }
+		return Entity{EntityID: v.RecipeId, EntityType: "recipes", Title: v.Title, Image: v.Banner, Description: v.Description, CreatedAt: parseTime(v.CreatedAt)}, nil
 	case models.Product:
 		var img string
 		if len(v.ImageURLs) > 0 {
@@ -225,7 +225,7 @@ func ConvertToEntity(ctx context.Context, data interface{}) (Entity, error) {
 	case models.Media:
 		return Entity{EntityID: v.MediaID, EntityType: "media", Title: v.Caption, Image: v.ThumbnailURL, Description: v.Caption, CreatedAt: parseTime(v.CreatedAt)}, nil
 	case models.Crop:
-		return Entity{EntityID: v.CropId, EntityType: "crops", Title: v.Name, Image: v.ImageURL, Description: v.Category, CreatedAt: parseTime(v.CreatedAt)}, nil
+		return Entity{EntityID: v.CropId, EntityType: "crops", Title: v.Name, Image: v.Banner, Description: v.Category, CreatedAt: parseTime(v.CreatedAt)}, nil
 	case models.BaitoWorker:
 		return Entity{EntityID: v.BaitoUserID, EntityType: "baitoworkers", Title: v.Name, Image: v.ProfilePic, Description: v.Bio, CreatedAt: parseTime(v.CreatedAt)}, nil
 	case models.Artist:

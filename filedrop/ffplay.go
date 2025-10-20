@@ -1,4 +1,4 @@
-package feed
+package filedrop
 
 import (
 	"bytes"
@@ -50,25 +50,6 @@ func (realRunner) Run(timeout time.Duration, name string, args ...string) (strin
 // Replace in tests to mock ffmpeg/ffprobe results.
 var cmdRunner Runner = realRunner{}
 
-// fitResolution scales original dimensions to fit within max bounds while maintaining aspect ratio.
-// Guards against zero input sizes.
-func fitResolution(origW, origH, maxW, maxH int) (int, int) {
-	if origW <= 0 || origH <= 0 || maxW <= 0 || maxH <= 0 {
-		return 0, 0
-	}
-	ratio := math.Min(float64(maxW)/float64(origW), float64(maxH)/float64(origH))
-	// Just in case ratio is extremely small, clamp to at least 1 pixel in each dimension if >0
-	w := int(float64(origW) * ratio)
-	h := int(float64(origH) * ratio)
-	if w == 0 && ratio > 0 {
-		w = 1
-	}
-	if h == 0 && ratio > 0 {
-		h = 1
-	}
-	return w, h
-}
-
 // getVideoDimensions returns width and height of a video using ffprobe
 func getVideoDimensions(videoPath string) (int, int, error) {
 	args := []string{
@@ -101,17 +82,19 @@ func getVideoDimensions(videoPath string) (int, int, error) {
 	return width, height, nil
 }
 
-// processVideoResolution transcodes a video to a specific resolution (e.g., 1280x720)
-func processVideoResolution(inputPath, outputPath, resolution string) error {
+func processVideoResolution(inputPath, outputPath string, targetHeight int) error {
 	// Ensure output directory exists
 	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
 		return fmt.Errorf("create output dir for %s: %w", outputPath, err)
 	}
 
+	// scale=-2:HEIGHT preserves aspect ratio, width auto-adjusted to even number
+	scaleFilter := fmt.Sprintf("scale=-2:%d", targetHeight)
+
 	args := []string{
 		"-y",
 		"-i", inputPath,
-		"-vf", fmt.Sprintf("scale=%s", resolution),
+		"-vf", scaleFilter,
 		"-c:v", "libx264",
 		"-crf", "23",
 		"-preset", "veryfast",
@@ -126,7 +109,8 @@ func processVideoResolution(inputPath, outputPath, resolution string) error {
 
 	stdout, stderr, err := cmdRunner.Run(transcodeTimeout, "ffmpeg", args...)
 	if err != nil {
-		return fmt.Errorf("ffmpeg transcode %s -> %s (%s) failed: %w (stdout=%s, stderr=%s)", inputPath, outputPath, resolution, err, stdout, stderr)
+		return fmt.Errorf("ffmpeg transcode %s -> %s (%s) failed: %w (stdout=%s, stderr=%s)",
+			inputPath, outputPath, scaleFilter, err, stdout, stderr)
 	}
 	return nil
 }

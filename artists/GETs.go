@@ -2,6 +2,7 @@ package artists
 
 import (
 	"context"
+	"fmt"
 	"naevis/db"
 	"naevis/models"
 	"naevis/utils"
@@ -54,4 +55,30 @@ func GetAllArtists(w http.ResponseWriter, r *http.Request, _ httprouter.Params) 
 	}
 
 	utils.RespondWithJSON(w, http.StatusOK, artists)
+}
+
+// GetArtistsSongs returns all published songs for an artist.
+// If no songs exist, returns an empty array.
+func GetArtistsSongs(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	artistID := ps.ByName("id")
+
+	var result struct {
+		Songs []models.ArtistSong `bson:"songs"`
+	}
+	fmt.Println("---------------------", artistID)
+	// ignore errors; result.Songs will be nil if no document found
+	err := db.SongsCollection.FindOne(context.TODO(), bson.M{"artistid": artistID}).Decode(&result)
+
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	filtered := make([]models.ArtistSong, 0, len(result.Songs))
+	for _, s := range result.Songs {
+		if s.Published {
+			filtered = append(filtered, s)
+		}
+	}
+
+	utils.RespondWithJSON(w, http.StatusOK, filtered)
 }

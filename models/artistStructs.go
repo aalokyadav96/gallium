@@ -17,6 +17,8 @@ type ArtistSong struct {
 	UploadedAt  time.Time `json:"uploadedAt" bson:"uploadedAt"`
 	Poster      string    `bson:"poster,omitempty" json:"poster,omitempty"`
 	Language    string    `json:"language" bson:"language"`
+	AudioExtn   string    `json:"audioextn" bson:"audioextn"`
+	PosterExtn  string    `json:"posterextn" bson:"posterextn"`
 }
 
 type ArtistAlbum struct {

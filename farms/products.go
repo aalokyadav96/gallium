@@ -5,13 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"naevis/db"
-	"naevis/filemgr"
 	"naevis/models"
 	"naevis/mq"
 	"naevis/utils"
 	"net/http"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
@@ -27,7 +24,8 @@ func CreateTool(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 }
 
 func createItem(w http.ResponseWriter, r *http.Request, itemType string) {
-	item, err := parseProductForm(r, itemType)
+	// item, err := parseProductForm(r, itemType)
+	item, err := parseProductJSON(r, itemType)
 	if err != nil {
 		http.Error(w, "Failed to parse form: "+err.Error(), http.StatusBadRequest)
 		return
@@ -58,7 +56,8 @@ func updateItem(w http.ResponseWriter, r *http.Request, ps httprouter.Params, it
 		return
 	}
 
-	item, err := parseProductForm(r, itemType)
+	// item, err := parseProductForm(r, itemType)
+	item, err := parseProductJSON(r, itemType)
 	if err != nil {
 		http.Error(w, "Failed to parse form: "+err.Error(), http.StatusBadRequest)
 		return
@@ -122,59 +121,50 @@ func deleteItem(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	}
 }
 
-// parseProductForm parses multipart form into models.Product including image saving.
-func parseProductForm(r *http.Request, itemType string) (models.Product, error) {
-	err := r.ParseMultipartForm(32 << 20)
-	if err != nil {
-		return models.Product{}, err
+// parseProductJSON parses a JSON body into models.Product.
+func parseProductJSON(r *http.Request, itemType string) (models.Product, error) {
+	var payload struct {
+		Name          string   `json:"name"`
+		Description   string   `json:"description"`
+		Category      string   `json:"category"`
+		SKU           string   `json:"sku"`
+		Unit          string   `json:"unit"`
+		Type          string   `json:"type"`
+		Featured      bool     `json:"featured"`
+		Price         float64  `json:"price"`
+		Quantity      float64  `json:"quantity"`
+		AvailableFrom string   `json:"availableFrom"`
+		AvailableTo   string   `json:"availableTo"`
+		Images        []string `json:"images"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		return models.Product{}, fmt.Errorf("invalid JSON: %w", err)
 	}
 
 	item := models.Product{
-		Name:        r.FormValue("name"),
-		Description: r.FormValue("description"),
-		Category:    r.FormValue("category"),
-		SKU:         r.FormValue("sku"),
-		Unit:        r.FormValue("unit"),
+		Name:        payload.Name,
+		Description: payload.Description,
+		Category:    payload.Category,
+		SKU:         payload.SKU,
+		Unit:        payload.Unit,
 		Type:        itemType,
-		Featured:    r.FormValue("featured") == "true" || r.FormValue("featured") == "on",
+		Featured:    payload.Featured,
+		Price:       payload.Price,
+		Quantity:    payload.Quantity,
+		ImageURLs:   payload.Images,
 	}
 
-	if price, err := strconv.ParseFloat(r.FormValue("price"), 64); err == nil {
-		item.Price = price
-	}
-	if quantity, err := strconv.ParseFloat(r.FormValue("quantity"), 64); err == nil {
-		item.Quantity = quantity
-	}
-	if date := r.FormValue("availableFrom"); date != "" {
-		if t, err := time.Parse("2006-01-02", date); err == nil {
+	// Parse date fields safely
+	if payload.AvailableFrom != "" {
+		if t, err := time.Parse("2006-01-02", payload.AvailableFrom); err == nil {
 			item.AvailableFrom = &models.SafeTime{Time: t}
 		}
 	}
-	if date := r.FormValue("availableTo"); date != "" {
-		if t, err := time.Parse("2006-01-02", date); err == nil {
+	if payload.AvailableTo != "" {
+		if t, err := time.Parse("2006-01-02", payload.AvailableTo); err == nil {
 			item.AvailableTo = &models.SafeTime{Time: t}
 		}
-	}
-
-	if r.MultipartForm == nil {
-		return item, fmt.Errorf("multipart form missing")
-	}
-
-	imageKeys := []string{}
-	for key := range r.MultipartForm.File {
-		if strings.HasPrefix(key, "images_") {
-			imageKeys = append(imageKeys, key)
-		}
-	}
-
-	if len(imageKeys) > 0 {
-		files, err := filemgr.SaveFormFilesByKeys(r.MultipartForm, imageKeys, filemgr.EntityProduct, filemgr.PicPhoto, false)
-		if err != nil {
-			return item, err
-		}
-		item.ImageURLs = files
-	} else {
-		item.ImageURLs = []string{}
 	}
 
 	return item, nil

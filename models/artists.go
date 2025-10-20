@@ -42,13 +42,13 @@ type ArtistEvent struct {
 	TicketURL string `bson:"ticket_url,omitempty" json:"ticketUrl,omitempty"`
 }
 
-// BehindTheScenes model for the "behind the scenes" content
-type BehindTheScenes struct {
-	ArtistID    string    `json:"artistid" bson:"artistid"`
-	Title       string    `json:"title" bson:"title"`
-	Description string    `json:"description" bson:"description"`
-	MediaURL    string    `json:"mediaUrl" bson:"mediaUrl"`
-	MediaType   string    `json:"mediaType" bson:"mediaType"` // "image" or "video"
-	Published   bool      `json:"published" bson:"published"`
-	CreatedAt   time.Time `json:"createdAt" bson:"createdAt"`
-}
+// // BehindTheScenes model for the "behind the scenes" content
+// type BehindTheScenes struct {
+// 	ArtistID    string    `json:"artistid" bson:"artistid"`
+// 	Title       string    `json:"title" bson:"title"`
+// 	Description string    `json:"description" bson:"description"`
+// 	MediaURL    string    `json:"mediaUrl" bson:"mediaUrl"`
+// 	MediaType   string    `json:"mediaType" bson:"mediaType"` // "image" or "video"
+// 	Published   bool      `json:"published" bson:"published"`
+// 	CreatedAt   time.Time `json:"createdAt" bson:"createdAt"`
+// }

@@ -8,20 +8,15 @@ import (
 	"naevis/globals"
 	"naevis/middleware"
 	"naevis/models"
+	"naevis/rdx"
 	"net/http"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/julienschmidt/httprouter"
-	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
-
-// Redis client for Pub/Sub
-var redisClient = redis.NewClient(&redis.Options{
-	Addr: "localhost:6379", // Update if using a different Redis setup
-})
 
 // Log multiple activities and publish events to Redis
 func LogActivities(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
@@ -71,7 +66,7 @@ func LogActivities(w http.ResponseWriter, r *http.Request, _ httprouter.Params) 
 	// Publish each activity to Redis for real-time recommendations
 	for _, activity := range activities {
 		activityJSON, _ := json.Marshal(activity)
-		err := redisClient.Publish(context.TODO(), "activity_events", activityJSON).Err()
+		err := rdx.Conn.Publish(context.TODO(), "activity_events", activityJSON).Err()
 		if err != nil {
 			log.Println("Failed to publish activity to Redis:", err)
 		}
@@ -152,7 +147,7 @@ func SendErrorResponse(w http.ResponseWriter, status int, message string) {
 
 // Redis subscriber for real-time recommendations
 func SubscribeToActivityEvents() {
-	pubsub := redisClient.Subscribe(context.TODO(), "activity_events")
+	pubsub := rdx.Conn.Subscribe(context.TODO(), "activity_events")
 	ch := pubsub.Channel()
 
 	for msg := range ch {

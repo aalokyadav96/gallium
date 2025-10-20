@@ -1,4 +1,4 @@
-package feed
+package filedrop
 
 import (
 	"fmt"
@@ -42,9 +42,9 @@ func processSingleImageUpload(file *multipart.FileHeader, entity filemgr.EntityT
 	}
 	defer src.Close()
 
-	origName, err := filemgr.SaveFileForEntity(src, file, entity, picType)
+	origName, ext, err := filemgr.SaveFileForEntity(src, file, entity, picType)
 	if err != nil {
 		return "", fmt.Errorf("saving image failed: %w", err)
 	}
-	return origName, nil
+	return origName + ext, nil
 }

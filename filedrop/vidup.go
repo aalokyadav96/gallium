@@ -1,4 +1,4 @@
-package feed
+package filedrop
 
 import (
 	"fmt"
@@ -89,42 +89,36 @@ func processVideo(r *http.Request, savedPath, uploadDir, uniqueID string, entity
 
 // -------------------- Video Resolutions --------------------
 
-// processVideoResolutionsParallel transcodes a video into multiple resolutions in parallel.
 func processVideoResolutionsParallel(originalFilePath, uploadDir, uniqueID string, origWidth, origHeight int, maxParallel int) ([]int, []string) {
 	if maxParallel <= 0 {
 		maxParallel = 2
 	}
+	_ = origWidth
 
 	ladder := []struct {
 		Label  string
-		Width  int
 		Height int
 	}{
-		{"4320", 7680, 4320}, {"2160", 3840, 2160}, {"1440", 2560, 1440},
-		{"1080", 1920, 1080}, {"720", 1280, 720}, {"480", 854, 480},
-		{"360", 640, 360}, {"240", 426, 240}, {"144", 256, 144},
+		{"4320", 4320}, {"2160", 2160}, {"1440", 1440},
+		{"1080", 1080}, {"720", 720}, {"480", 480},
+		{"360", 360}, {"240", 240}, {"144", 144},
 	}
 
 	type task struct {
-		Label       string
-		TargetW     int
-		TargetH     int
-		OutputPath  string
-		ScaledParam string
+		Label      string
+		Height     int
+		OutputPath string
 	}
 	var tasks []task
 	for _, r := range ladder {
-		newW, newH := fitResolution(origWidth, origHeight, r.Width, r.Height)
-		if newW > origWidth || newH > origHeight {
-			continue
+		if r.Height > origHeight {
+			continue // skip higher than source
 		}
 		out := generateFilePath(uploadDir, uniqueID+"-"+r.Label, "mp4")
 		tasks = append(tasks, task{
-			Label:       r.Label,
-			TargetW:     newW,
-			TargetH:     newH,
-			OutputPath:  out,
-			ScaledParam: fmt.Sprintf("%dx%d", newW, newH),
+			Label:      r.Label,
+			Height:     r.Height,
+			OutputPath: out,
 		})
 	}
 
@@ -148,14 +142,14 @@ func processVideoResolutionsParallel(originalFilePath, uploadDir, uniqueID strin
 	for i := 0; i < workers; i++ {
 		go func() {
 			for t := range taskCh {
-				err := processVideoResolution(originalFilePath, t.OutputPath, t.ScaledParam)
+				err := processVideoResolution(originalFilePath, t.OutputPath, t.Height)
 				if err != nil {
 					fmt.Printf("Skipping %s due to error: %v\n", t.Label, err)
 					resCh <- result{ok: false}
 					continue
 				}
 				urlPath := "/" + filepath.ToSlash(t.OutputPath)
-				resCh <- result{ok: true, height: t.TargetH, outputURL: urlPath}
+				resCh <- result{ok: true, height: t.Height, outputURL: urlPath}
 			}
 		}()
 	}

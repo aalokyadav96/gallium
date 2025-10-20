@@ -172,9 +172,9 @@ func GetLikers(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		}
 
 		var userMeta struct {
-			UserID         string `bson:"userid"`
-			Username       string `bson:"username"`
-			ProfilePicture string `bson:"profile_picture,omitempty"`
+			UserID   string `bson:"userid"`
+			Username string `bson:"username"`
+			Avatar   string `bson:"avatar,omitempty"`
 		}
 
 		err := db.UserCollection.FindOne(ctx, bson.M{"userid": like.UserID}).Decode(&userMeta)
@@ -183,9 +183,9 @@ func GetLikers(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		}
 
 		likers = append(likers, map[string]string{
-			"userid":          userMeta.UserID,
-			"username":        userMeta.Username,
-			"profile_picture": userMeta.ProfilePicture,
+			"userid":   userMeta.UserID,
+			"username": userMeta.Username,
+			"avatar":   userMeta.Avatar,
 		})
 	}
 

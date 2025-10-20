@@ -61,8 +61,8 @@ func normalizeRecipeSlices(r *models.Recipe) {
 	if r.Steps == nil {
 		r.Steps = []string{}
 	}
-	if r.ImageURLs == nil {
-		r.ImageURLs = []string{}
+	if r.Images == nil {
+		r.Images = []string{}
 	}
 	if r.Ingredients == nil {
 		r.Ingredients = []models.Ingredient{}
@@ -185,7 +185,7 @@ func CreateRecipe(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		Servings:    servings,
 		VideoURL:    videoUrl,
 		Notes:       notes,
-		ImageURLs:   imagePaths,
+		Images:      imagePaths,
 		CreatedAt:   time.Now().Unix(),
 		Views:       0,
 	}

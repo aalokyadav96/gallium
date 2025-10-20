@@ -56,7 +56,7 @@ type Crop struct {
 	Price        float64      `json:"price"`
 	Quantity     int          `json:"quantity"`
 	Unit         string       `json:"unit"`
-	ImageURL     string       `json:"imageUrl,omitempty"`
+	Banner       string       `bson:"banner" json:"banner"`
 	Notes        string       `json:"notes,omitempty"`
 	Category     string       `json:"category,omitempty"`
 	CatalogueId  string       `json:"catalogueid,omitempty"`
@@ -85,7 +85,7 @@ type FarmOrder struct {
 type CropCatalogueItem struct {
 	Name       string `json:"name"`
 	Category   string `json:"category"`
-	ImageURL   string `json:"imageUrl"`
+	Banner     string `bson:"banner" json:"banner"`
 	Stock      int    `json:"stock"`
 	Unit       string `json:"unit"`
 	Featured   bool   `json:"featured"`
@@ -102,7 +102,7 @@ type CropListing struct {
 	AvailableQtyKg int      `json:"availableQtyKg,omitempty"`
 	HarvestDate    string   `json:"harvestDate,omitempty"` // ISO string
 	Tags           []string `json:"tags,omitempty"`
-	ImageURL       string   `json:"imageUrl,omitempty"`
+	Banner         string   `bson:"banner" json:"banner"`
 }
 
 type Product struct {
@@ -110,6 +110,7 @@ type Product struct {
 	Name          string    `bson:"name" json:"name"`
 	Description   string    `bson:"description" json:"description"`
 	Price         float64   `bson:"price" json:"price"`
+	Banner        string    `bson:"banner" json:"banner"`
 	ImageURLs     []string  `bson:"imageUrls" json:"imageUrls"`
 	Category      string    `bson:"category" json:"category"`
 	Type          string    `bson:"type" json:"type"`
@@ -131,7 +132,7 @@ type Tool struct {
 	Name          string    `bson:"name" json:"name"`
 	Price         float64   `bson:"price" json:"price"`
 	Description   string    `bson:"description" json:"description"`
-	ImageURL      string    `bson:"imageUrl" json:"imageUrl"`
+	Banner        string    `bson:"banner" json:"banner"`
 	Category      string    `bson:"category" json:"category"`
 	SKU           string    `bson:"sku,omitempty" json:"sku,omitempty"`
 	AvailableFrom *SafeTime `bson:"availableFrom,omitempty" json:"availableFrom,omitempty"`

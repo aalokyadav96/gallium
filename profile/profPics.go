@@ -26,7 +26,7 @@ func EditProfilePic(w http.ResponseWriter, r *http.Request, _ httprouter.Params)
 		return
 	}
 
-	pictureUpdates, err := updateProfilePictures(w, r, claims)
+	pictureUpdates, err := updateAvatars(w, r, claims)
 	if err != nil {
 		http.Error(w, "Failed to update profile picture", http.StatusInternalServerError)
 		return
@@ -41,14 +41,14 @@ func EditProfilePic(w http.ResponseWriter, r *http.Request, _ httprouter.Params)
 	InvalidateCachedProfile(claims.Username)
 
 	// Return only the new image name as JSON
-	origName, ok := pictureUpdates["profile_picture"].(string)
+	origName, ok := pictureUpdates["avatar"].(string)
 	if !ok {
 		http.Error(w, "Failed to get updated image name", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"profile_picture": origName})
+	json.NewEncoder(w).Encode(map[string]string{"avatar": origName})
 }
 
 // Edit banner picture
@@ -79,14 +79,14 @@ func EditProfileBanner(w http.ResponseWriter, r *http.Request, _ httprouter.Para
 	InvalidateCachedProfile(claims.Username)
 
 	// Return only the new image name as JSON
-	origName, ok := bannerUpdates["banner_picture"].(string)
+	origName, ok := bannerUpdates["banner"].(string)
 	if !ok {
 		http.Error(w, "Failed to get updated banner image name", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"banner_picture": origName})
+	json.NewEncoder(w).Encode(map[string]string{"banner": origName})
 }
 
 func uploadBannerHandler(_ http.ResponseWriter, r *http.Request, _ *middleware.Claims) (bson.M, error) {
@@ -97,7 +97,7 @@ func uploadBannerHandler(_ http.ResponseWriter, r *http.Request, _ *middleware.C
 		return nil, fmt.Errorf("error parsing form data: %w", err)
 	}
 
-	file, header, err := r.FormFile("banner_picture")
+	file, header, err := r.FormFile("banner")
 	if err != nil {
 		return nil, fmt.Errorf("banner upload failed: %w", err)
 	}
@@ -108,13 +108,13 @@ func uploadBannerHandler(_ http.ResponseWriter, r *http.Request, _ *middleware.C
 		return nil, fmt.Errorf("save image with thumb failed: %w", err)
 	}
 
-	update["banner_picture"] = origName
+	update["banner"] = origName
 	mq.Notify("banner-uploaded", models.Index{})
 
 	return update, nil
 }
 
-func updateProfilePictures(_ http.ResponseWriter, r *http.Request, claims *middleware.Claims) (bson.M, error) {
+func updateAvatars(_ http.ResponseWriter, r *http.Request, claims *middleware.Claims) (bson.M, error) {
 	update := bson.M{}
 	_ = claims
 	err := r.ParseMultipartForm(10 << 20)
@@ -133,7 +133,7 @@ func updateProfilePictures(_ http.ResponseWriter, r *http.Request, claims *middl
 		return nil, fmt.Errorf("save image with thumb failed: %w", err)
 	}
 
-	update["profile_picture"] = origName
+	update["avatar"] = origName
 	update["profile_thumb"] = thumbName
 
 	mq.Notify("avatar-uploaded", models.Index{})

@@ -3,14 +3,13 @@ package feed
 import (
 	"encoding/json"
 	"naevis/middleware"
-	"naevis/utils"
 	"net/http"
 
 	"github.com/julienschmidt/httprouter"
 )
 
-// POST /api/v1/feed/tweet
-func CreateTweetPost(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+// POST /api/v1/feed/post
+func CreateFeedPost(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	ctx := r.Context()
 	token := r.Header.Get("Authorization")
 	claims, err := middleware.ValidateJWT(token)
@@ -19,20 +18,13 @@ func CreateTweetPost(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 		return
 	}
 
-	if err := r.ParseMultipartForm(20 << 20); err != nil {
-		http.Error(w, "Failed to parse form data", http.StatusBadRequest)
+	var payload PostPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
 
-	payload := PostPayload{
-		Type:        r.FormValue("type"),
-		Text:        r.FormValue("text"),
-		Title:       r.FormValue("title"),
-		Description: r.FormValue("description"),
-		Tags:        utils.SplitTags(r.FormValue("tags")),
-	}
-
-	post, err := CreateOrEditPost(ctx, claims, payload, r, ActionCreate)
+	post, err := CreateOrEditPost(ctx, claims, payload, ActionCreate)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -62,7 +54,7 @@ func EditPost(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	}
 	payload.PostID = ps.ByName("postid")
 
-	post, err := CreateOrEditPost(ctx, claims, payload, r, ActionEdit)
+	post, err := CreateOrEditPost(ctx, claims, payload, ActionEdit)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

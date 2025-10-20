@@ -55,7 +55,7 @@ func EditEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 	if seatingName != "" {
-		updateFields["seatingplan"] = seatingName
+		updateFields["seating"] = seatingName
 	}
 
 	updateFields["updated_at"] = time.Now()

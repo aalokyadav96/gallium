@@ -291,10 +291,6 @@ func DeleteArtistByID(w http.ResponseWriter, r *http.Request, ps httprouter.Para
 		bson.M{"$set": bson.M{"deleted": true}}, nil, nil)
 }
 
-func DeleteSong(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	deleteByField(w, r, ps, db.SongsCollection, "songId", "songid", "song", "song-deleted", nil, nil)
-}
-
 func DeleteArtistEvent(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	deleteByField(w, r, ps, db.ArtistEventsCollection, "id", "eventid", "artistevent", "artistevent-deleted", nil, nil)
 }

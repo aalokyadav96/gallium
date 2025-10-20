@@ -113,8 +113,8 @@ func GetPreCropCatalogue(w http.ResponseWriter, r *http.Request, _ httprouter.Pa
 				entry.Name = record[i]
 			case "category":
 				entry.Category = record[i]
-			case "imageurl":
-				entry.ImageURL = record[i]
+			case "banner":
+				entry.Banner = record[i]
 			case "stock":
 				entry.Stock, _ = strconv.Atoi(record[i])
 			case "unit":
@@ -185,15 +185,15 @@ func GetCropTypes(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 					},
 				},
 			},
-			"imageUrl": bson.M{"$first": "$imageUrl"}, // match actual DB field name
-			"unit":     bson.M{"$first": "$unit"},
+			"banner": bson.M{"$first": "$banner"}, // match actual DB field name
+			"unit":   bson.M{"$first": "$unit"},
 		}}},
 		{{Key: "$project", Value: bson.M{
 			"name":           "$_id",
 			"minPrice":       1,
 			"maxPrice":       1,
 			"availableCount": 1,
-			"imageUrl":       1,
+			"banner":         1,
 			"unit":           1,
 			"_id":            0,
 		}}},

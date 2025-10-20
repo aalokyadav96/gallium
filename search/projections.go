@@ -18,7 +18,7 @@ var Projections = map[string]bson.M{
 	},
 	"baitoworkers": {
 		"baito_user_id": 1, "name": 1, "age": 1, "preferred_roles": 1,
-		"bio": 1, "profile_picture": 1, "created_at": 1,
+		"bio": 1, "avatar": 1, "created_at": 1,
 	},
 	"blogposts": {
 		"postid": 1, "title": 1, "content": 1,
@@ -67,7 +67,7 @@ var Projections = map[string]bson.M{
 		"uploadedAt": 1, "artistid": 1, "genre": 1,
 	},
 	"users": {
-		"userid": 1, "username": 1, "name": 1, "bio": 1, "profile_picture": 1,
+		"userid": 1, "username": 1, "name": 1, "bio": 1, "avatar": 1,
 	},
 	"farms": {
 		"farmid": 1, "name": 1, "latitude": 1, "longitude": 1,

@@ -17,7 +17,7 @@ func AddPayRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
 	payService.RegisterDefaultResolvers()
 
 	// Wallet routes
-	router.GET("/api/p1/wallet/balance",
+	router.GET("/api/v1/wallet/balance",
 		middleware.Chain(
 			rateLimiter.Limit,
 			middleware.Authenticate,
@@ -25,7 +25,7 @@ func AddPayRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
 		)(payService.GetBalance),
 	)
 
-	router.POST("/api/p1/wallet/topup",
+	router.POST("/api/v1/wallet/topup",
 		middleware.Chain(
 			rateLimiter.Limit,
 			middleware.Authenticate,
@@ -34,7 +34,7 @@ func AddPayRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
 		)(payService.TopUp),
 	)
 
-	router.POST("/api/p1/wallet/pay",
+	router.POST("/api/v1/wallet/pay",
 		middleware.Chain(
 			rateLimiter.Limit,
 			middleware.Authenticate,
@@ -44,7 +44,7 @@ func AddPayRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
 	)
 
 	// Transfer & Refund
-	router.POST("/api/p1/wallet/transfer",
+	router.POST("/api/v1/wallet/transfer",
 		middleware.Chain(
 			rateLimiter.Limit,
 			middleware.Authenticate,
@@ -53,7 +53,7 @@ func AddPayRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
 		)(payService.Transfer),
 	)
 
-	router.POST("/api/p1/wallet/refund",
+	router.POST("/api/v1/wallet/refund",
 		middleware.Chain(
 			rateLimiter.Limit,
 			middleware.Authenticate,
@@ -63,7 +63,7 @@ func AddPayRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
 	)
 
 	// List transactions (no txn wrapper needed, only reads)
-	router.GET("/api/p1/wallet/transactions",
+	router.GET("/api/v1/wallet/transactions",
 		middleware.Chain(
 			rateLimiter.Limit,
 			middleware.Authenticate,

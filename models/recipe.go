@@ -26,10 +26,11 @@ type Recipe struct {
 	PortionSize string       `json:"portionSize" bson:"portionSize"` // new
 	Season      string       `json:"season" bson:"season"`           // new
 	Tags        []string     `json:"tags" bson:"tags"`
-	ImageURLs   []string     `json:"imageUrls" bson:"imageUrls"`
+	Images      []string     `json:"images" bson:"images"`
 	Ingredients []Ingredient `json:"ingredients" bson:"ingredients"`
 	Steps       []string     `json:"steps" bson:"steps"`
 	Difficulty  string       `json:"difficulty" bson:"difficulty"`
+	Banner      string       `json:"banner" bson:"banner"`
 	Servings    int          `json:"servings" bson:"servings"`
 	VideoURL    string       `json:"videoUrl" bson:"videoUrl"` // new
 	Notes       string       `json:"notes" bson:"notes"`       // new

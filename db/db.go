@@ -47,6 +47,7 @@ var (
 	DateCapsCollection          *mongo.Collection
 	BookingsCollection          *mongo.Collection
 	PostsCollection             *mongo.Collection
+	ZzonesCollection            *mongo.Collection
 	BlogPostsCollection         *mongo.Collection
 	FilesCollection             *mongo.Collection
 	MerchCollection             *mongo.Collection
@@ -171,6 +172,7 @@ func init() {
 	TransactionCollection = db.Collection("transactions")
 	UserDataCollection = db.Collection("userdata")
 	UserCollection = db.Collection("users")
+	ZzonesCollection = db.Collection("zzones")
 	SearchCollection = dbx.Collection("users")
 }
 

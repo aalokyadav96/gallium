@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"naevis/db"
+	"naevis/filedrop"
 	"naevis/globals"
 	"naevis/models"
 	"naevis/mq"
@@ -113,7 +114,7 @@ func DeletePost(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	var existingFile models.FileMetadata
 	db.FilesCollection.FindOne(context.TODO(), bson.M{"postid": postID}).Decode(&existingFile)
 
-	RemoveUserFile(requestingUserID, postID, existingFile.Hash)
+	filedrop.RemoveUserFile(requestingUserID, postID, existingFile.Hash)
 
 	if result.DeletedCount == 0 {
 		http.Error(w, "Post not found", http.StatusNotFound)

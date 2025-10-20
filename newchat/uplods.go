@@ -56,13 +56,14 @@ func UploadHandler(hub *Hub) httprouter.Handle {
 				http.Error(w, "file error", http.StatusBadRequest)
 				return
 			}
-			savedName, err := filemgr.SaveFileForEntity(file, hdr, filemgr.EntityChat, filemgr.PicPhoto)
+			savedName, ext, err := filemgr.SaveFileForEntity(file, hdr, filemgr.EntityChat, filemgr.PicPhoto)
 			file.Close()
 			if err != nil {
 				log.Println("save failed:", err)
 				http.Error(w, "save failed", http.StatusInternalServerError)
 				return
 			}
+			_ = ext
 			attachments = append(attachments, Attachment{
 				Filename: hdr.Filename,
 				Path:     savedName,

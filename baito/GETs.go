@@ -71,7 +71,57 @@ func GetLatestBaitos(w http.ResponseWriter, r *http.Request, _ httprouter.Params
 }
 
 func GetRelatedBaitos(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	GetLatestBaitos(w, r, nil)
+	ctx := r.Context()
+
+	// Parse query params
+	category := r.URL.Query().Get("category")
+	exclude := r.URL.Query().Get("exclude")
+
+	// First try: same category, excluding current
+	filter := bson.M{}
+	if category != "" {
+		filter["category"] = category
+	}
+	if exclude != "" {
+		filter["baitoid"] = bson.M{"$ne": exclude}
+	}
+
+	opts := db.OptionsFindLatest(10).SetSort(bson.M{"createdAt": -1})
+
+	cursor, err := db.BaitoCollection.Find(ctx, filter, opts)
+	if err != nil {
+		log.Printf("DB error: %v", err)
+		utils.RespondWithError(w, http.StatusInternalServerError, "Database error")
+		return
+	}
+	defer cursor.Close(ctx)
+
+	// Check if we got any results
+	var baitos []bson.M
+	if err := cursor.All(ctx, &baitos); err != nil {
+		log.Printf("Cursor decode error: %v", err)
+		utils.RespondWithError(w, http.StatusInternalServerError, "Database error")
+		return
+	}
+
+	if len(baitos) > 0 {
+		utils.RespondWithJSON(w, http.StatusOK, baitos)
+		return
+	}
+
+	// Fallback: latest baitos (excluding current)
+	fallbackFilter := bson.M{}
+	if exclude != "" {
+		fallbackFilter["baitoid"] = bson.M{"$ne": exclude}
+	}
+
+	cursor2, err := db.BaitoCollection.Find(ctx, fallbackFilter, opts)
+	if err != nil {
+		log.Printf("DB error (fallback): %v", err)
+		utils.RespondWithError(w, http.StatusInternalServerError, "Database error")
+		return
+	}
+	findAndRespondBaitos(ctx, w, cursor2)
 }
 
 // Explicitly decode baitos (no generics)

@@ -83,7 +83,7 @@ func CreateFarm(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		return
 	}
 
-	fileName, err := filemgr.SaveFormFile(r.MultipartForm, "photo", filemgr.EntityFarm, filemgr.PicPhoto, false)
+	fileName, err := filemgr.SaveFormFile(r.MultipartForm, "photo", filemgr.EntityFarm, filemgr.PicBanner, false)
 	if err == nil && fileName != "" {
 		farm.Banner = fileName
 	}
@@ -127,9 +127,9 @@ func EditFarm(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		input.Contact = r.FormValue("contact")
 		input.AvailabilityTiming = r.FormValue("availabilityTiming")
 
-		fileName, err := filemgr.SaveFormFile(r.MultipartForm, "photo", filemgr.EntityFarm, filemgr.PicPhoto, false)
+		fileName, err := filemgr.SaveFormFile(r.MultipartForm, "banner", filemgr.EntityFarm, filemgr.PicBanner, false)
 		if err == nil && fileName != "" {
-			updateFields["photo"] = fileName
+			updateFields["banner"] = fileName
 		}
 	} else {
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {

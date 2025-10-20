@@ -13,7 +13,6 @@ import (
 
 	"naevis/middleware"
 	"naevis/mq"
-	"naevis/newchat"
 	"naevis/ratelim"
 	"naevis/routes"
 
@@ -50,40 +49,6 @@ func parseAllowedOrigins(env string) []string {
 	return out
 }
 
-// startStaticServer runs a separate HTTP server for public static files.
-func startStaticServer() {
-	staticRouter := httprouter.New()
-	routes.AddStaticRoutes(staticRouter)
-
-	staticServer := &http.Server{
-		Addr:              ":4001",
-		Handler:           staticRouter,
-		ReadTimeout:       5 * time.Second,
-		WriteTimeout:      10 * time.Second,
-		IdleTimeout:       60 * time.Second,
-		ReadHeaderTimeout: 2 * time.Second,
-	}
-
-	go func() {
-		log.Println("?? Static server running on http://localhost:4001")
-		if err := staticServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Static server error: %v", err)
-		}
-	}()
-
-	// graceful shutdown for static server
-	go func() {
-		sigCh := make(chan os.Signal, 1)
-		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-		<-sigCh
-
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		staticServer.Shutdown(ctx)
-		log.Println("? Static server stopped")
-	}()
-}
-
 func main() {
 	// load .env if present
 	if err := godotenv.Load(); err != nil {
@@ -105,12 +70,10 @@ func main() {
 	rateLimiter := ratelim.NewRateLimiter(1, 6, 10*time.Minute, 10000)
 
 	// initialize chat hub
-	hub := newchat.NewHub()
-	go hub.Run()
 
 	// build API router and add chat routes
 	router := setupRouter(rateLimiter)
-	routes.AddNewChatRoutes(router, hub, rateLimiter)
+	routes.AddStaticRoutes(router)
 
 	// Middleware chain: Logging + SecurityHeaders -> router
 	innerHandler := middleware.LoggingMiddleware(middleware.SecurityHeaders(router))
@@ -137,20 +100,19 @@ func main() {
 	go mq.StartIndexingWorker()
 	go mq.StartHashtagWorker()
 
-	// start static server
-	startStaticServer()
+	// // start static server
+	// startStaticServer()
 
 	// graceful shutdown for API server
 	server.RegisterOnShutdown(func() {
-		log.Println("Shutting down chat hub...")
-		hub.Stop()
+		log.Println("🛑 Shutting down...")
 	})
 
 	// start API server
 	go func() {
-		log.Printf("API server listening on %s", port)
+		log.Printf("🚀 API server listening on %s", port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("? API ListenAndServe error: %v", err)
+			log.Fatalf("❌ API ListenAndServe error: %v", err)
 		}
 	}()
 
@@ -159,13 +121,13 @@ func main() {
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	<-sigCh
 
-	log.Println("Shutdown signal received; shutting down gracefully...")
+	log.Println("🛑 Shutdown signal received; shutting down gracefully...")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := server.Shutdown(ctx); err != nil {
-		log.Fatalf("Graceful shutdown failed: %v", err)
+		log.Fatalf("❌ Graceful shutdown failed: %v", err)
 	}
 
-	log.Println("API server stopped cleanly")
+	log.Println("✅ API server stopped cleanly")
 }

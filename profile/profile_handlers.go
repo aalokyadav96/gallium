@@ -69,8 +69,8 @@ func GetUserProfile(w http.ResponseWriter, r *http.Request, ps httprouter.Params
 		Email:          user.Email,
 		Name:           user.Name,
 		Bio:            user.Bio,
-		ProfilePicture: user.ProfilePicture,
-		BannerPicture:  user.BannerPicture,
+		Avatar:         user.Avatar,
+		Banner:         user.Banner,
 		FollowersCount: len(userFollow.Followers),
 		FollowingCount: len(userFollow.Follows),
 		IsFollowing:    utils.Contains(userFollow.Followers, claims.UserID),
@@ -103,12 +103,12 @@ func GetProfile(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		return
 	}
 
-	// 2. Attempt to read a cached JSON profile from Redis. If it exists (non-empty), return it immediately.
-	if cachedJSON, err := GetCachedProfile(claims.Username); err == nil && cachedJSON != "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(cachedJSON))
-		return
-	}
+	// // 2. Attempt to read a cached JSON profile from Redis. If it exists (non-empty), return it immediately.
+	// if cachedJSON, err := GetCachedProfile(claims.Username); err == nil && cachedJSON != "" {
+	// 	w.Header().Set("Content-Type", "application/json")
+	// 	w.Write([]byte(cachedJSON))
+	// 	return
+	// }
 
 	// 3. Fetch follow data for this user.
 	userFollow, err := GetUserFollowData(claims.UserID)
@@ -145,7 +145,7 @@ func GetProfile(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	}
 
 	// Best-effort cache write; ignore errors here.
-	_ = CacheProfile(claims.Username, string(profileJSON))
+	// _ = CacheProfile(claims.Username, string(profileJSON))
 
 	// 8. Return the JSON.
 	w.Header().Set("Content-Type", "application/json")

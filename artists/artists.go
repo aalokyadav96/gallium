@@ -184,14 +184,14 @@ func parseArtistFormData(r *http.Request, existing *models.Artist) (models.Artis
 				file, header, err := r.FormFile(fileKey)
 				if err == nil {
 					defer file.Close()
-					filename, ferr := filemgr.SaveFileForEntity(file, header, filemgr.EntityArtist, filemgr.PicMember)
+					filename, ext, ferr := filemgr.SaveFileForEntity(file, header, filemgr.EntityArtist, filemgr.PicMember)
 					if ferr != nil {
 						return artist, updateData, filesToDelete, fmt.Errorf("failed to save member image: %v", ferr)
 					}
-					if existing != nil && i < len(existing.Members) && existing.Members[i].Image != filename {
+					if existing != nil && i < len(existing.Members) && existing.Members[i].Image != filename+ext {
 						filesToDelete = append(filesToDelete, filepath.Join(filemgr.ResolvePath(filemgr.EntityArtist, filemgr.PicMember), existing.Members[i].Image))
 					}
-					members[i].Image = filename
+					members[i].Image = filename + ext
 				} else if existing != nil && i < len(existing.Members) {
 					members[i].Image = existing.Members[i].Image
 				}

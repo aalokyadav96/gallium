@@ -50,9 +50,9 @@ func AddCrop(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	crop.FarmID = farmID
 	crop.CreatedBy = userid
 
-	filename, err := filemgr.SaveFormFile(r.MultipartForm, "image", filemgr.EntityCrop, filemgr.PicPhoto, false)
+	filename, err := filemgr.SaveFormFile(r.MultipartForm, "image", filemgr.EntityCrop, filemgr.PicBanner, false)
 	if err == nil && filename != "" {
-		crop.ImageURL = filename
+		crop.Banner = filename
 	}
 
 	_, err = db.CropsCollection.InsertOne(ctx, crop)
@@ -115,8 +115,8 @@ func EditCrop(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		update["expiryDate"] = d
 	}
 
-	if filename, err := filemgr.SaveFormFile(r.MultipartForm, "image", filemgr.EntityCrop, filemgr.PicPhoto, false); err == nil && filename != "" {
-		update["imageUrl"] = filename
+	if filename, err := filemgr.SaveFormFile(r.MultipartForm, "image", filemgr.EntityCrop, filemgr.PicBanner, false); err == nil && filename != "" {
+		update["banner"] = filename
 	}
 
 	if len(update) <= 1 { // only updatedAt present

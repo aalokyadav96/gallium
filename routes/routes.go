@@ -14,8 +14,10 @@ import (
 	"naevis/dels"
 	"naevis/discord"
 	"naevis/events"
+	"naevis/fanmade"
 	"naevis/farms"
 	"naevis/feed"
+	"naevis/filedrop"
 	"naevis/filemgr"
 	"naevis/hashtags"
 	"naevis/home"
@@ -28,7 +30,6 @@ import (
 	"naevis/metadata"
 	"naevis/middleware"
 	"naevis/moderator"
-	"naevis/newchat"
 	"naevis/places"
 	"naevis/posts"
 	"naevis/products"
@@ -477,6 +478,15 @@ func AddMediaRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter)
 	router.DELETE("/api/v1/media/:entitytype/:entityid/:id", rateLimiter.Limit(middleware.Authenticate(dels.DeleteMedia)))
 }
 
+func AddFanmadeRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
+	router.GET("/api/v1/fanmade/:entitytype/:entityid/:id", rateLimiter.Limit(fanmade.GetMedia))
+	router.GET("/api/v1/fanmade/:entitytype/:entityid", rateLimiter.Limit(fanmade.GetMedias))
+
+	router.POST("/api/v1/fanmade/:entitytype/:entityid", rateLimiter.Limit(middleware.Authenticate(fanmade.AddMedia)))
+	router.PUT("/api/v1/fanmade/:entitytype/:entityid/:id", rateLimiter.Limit(middleware.Authenticate(fanmade.EditMedia)))
+	router.DELETE("/api/v1/fanmade/:entitytype/:entityid/:id", rateLimiter.Limit(middleware.Authenticate(fanmade.DeleteMedia)))
+}
+
 func AddPostRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
 	// Public read
 	router.GET("/api/v1/posts/post/:id", rateLimiter.Limit(posts.GetPost))
@@ -541,7 +551,7 @@ func AddArtistRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter
 	router.GET("/api/v1/artists/:id/albums", rateLimiter.Limit(artists.GetArtistsAlbums))
 	router.GET("/api/v1/artists/:id/posts", rateLimiter.Limit(artists.GetArtistsPosts))
 	router.GET("/api/v1/artists/:id/merch", rateLimiter.Limit(artists.GetArtistsMerch))
-	router.GET("/api/v1/artists/:id/behindthescenes", rateLimiter.Limit(artists.GetBTS))
+	// router.GET("/api/v1/artists/:id/behindthescenes", rateLimiter.Limit(artists.GetBTS))
 	router.GET("/api/v1/artists/:id/events", rateLimiter.Limit(artists.GetArtistEvents))
 
 	// Authenticated write
@@ -551,7 +561,7 @@ func AddArtistRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter
 
 	router.POST("/api/v1/artists/:id/songs", rateLimiter.Limit(middleware.Authenticate(artists.PostNewSong)))
 	router.PUT("/api/v1/artists/:id/songs/:songId/edit", rateLimiter.Limit(middleware.Authenticate(artists.EditSong)))
-	router.DELETE("/api/v1/artists/:id/songs/:songId", rateLimiter.Limit(middleware.Authenticate(dels.DeleteSong)))
+	router.DELETE("/api/v1/artists/:id/songs/:songId", rateLimiter.Limit(middleware.Authenticate(artists.DeleteSong)))
 
 	router.PUT("/api/v1/artists/:id/events/addtoevent", rateLimiter.Limit(middleware.Authenticate(artists.AddArtistToEvent)))
 	router.POST("/api/v1/artists/:id/events", rateLimiter.Limit(middleware.Authenticate(artists.CreateArtistEvent)))
@@ -605,12 +615,12 @@ func AddFeedRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) 
 	router.GET("/api/v1/feed/feed", rateLimiter.Limit(middleware.Authenticate(feed.GetPosts)))
 	router.GET("/api/v1/feed/media/:entityType/:entityId", rateLimiter.Limit(middleware.Authenticate(feed.GetPosts)))
 
-	router.POST("/api/v1/feed/post", rateLimiter.Limit(middleware.Authenticate(feed.CreateTweetPost)))
+	router.POST("/api/v1/feed/post", rateLimiter.Limit(middleware.Authenticate(feed.CreateFeedPost)))
 	router.DELETE("/api/v1/feed/post/:postid", rateLimiter.Limit(middleware.Authenticate(dels.DeletePost)))
 
 	// NEW
 	router.PATCH("/api/v1/feed/post/:postid", rateLimiter.Limit(middleware.Authenticate(feed.EditPost)))
-	router.POST("/api/v1/feed/post/:postid/subtitles/:lang", rateLimiter.Limit(middleware.Authenticate(feed.UploadSubtitle)))
+	router.POST("/api/v1/feed/post/:postid/subtitles/:lang", rateLimiter.Limit(middleware.Authenticate(filedrop.UploadSubtitle)))
 }
 
 // func AddFeedRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) {
@@ -667,28 +677,5 @@ func AddMiscRoutes(router *httprouter.Router, rateLimiter *ratelim.RateLimiter) 
 	// router.POST("/api/v1/upload", rateLimiter.Limit(filecheck.UploadFile))
 	// router.POST("/api/v1/feed/remhash", rateLimiter.Limit(filecheck.RemoveUserFile))
 	// router.GET("/resize/:folder/*filename", cdn.ServeStatic)
-
-}
-
-func AddNewChatRoutes(router *httprouter.Router, hub *newchat.Hub, rateLimiter *ratelim.RateLimiter) {
-	router.GET("/api/v1/newchats/all", middleware.Authenticate(newchat.GetUserChats))
-	router.POST("/api/v1/newchats/init", middleware.Authenticate(newchat.InitChat))
-
-	// This should likely be protected; token could be in query or header
-	router.GET("/ws/newchat/:room", middleware.Authenticate(newchat.WebSocketHandler(hub)))
-
-	router.POST("/newchat/upload", middleware.Authenticate(newchat.UploadHandler(hub)))
-	router.POST("/newchat/edit", middleware.Authenticate(newchat.EditMessageHandler(hub)))
-	router.POST("/newchat/delete", middleware.Authenticate(newchat.DeleteMessageHandler(hub)))
-
-	// router.GET("/newchat/:room/poll", middleware.Authenticate(newchat.PollMessagesHandler))
-
-	router.GET("/api/v1/newchat/:room", middleware.Authenticate(newchat.GetChat))
-	router.POST("/api/v1/newchat/:room/message", middleware.Authenticate(newchat.CreateMessage))
-	router.DELETE("/api/v1/newchat/:room/message/:msgid", middleware.Authenticate(dels.DeletesMessage))
-
-	/**/
-
-	router.PUT("/api/v1/newchat/:room/message/:msgid", middleware.Authenticate(newchat.UpdateMessage))
 
 }

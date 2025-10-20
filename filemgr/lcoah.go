@@ -15,8 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"naevis/mq"
-
 	"github.com/disintegration/imaging"
 )
 
@@ -30,10 +28,10 @@ const (
 // Public Save Functions
 // -------------------------
 
-func SaveFileForEntity(file multipart.File, header *multipart.FileHeader, entity EntityType, picType PictureType) (string, error) {
+func SaveFileForEntity(file multipart.File, header *multipart.FileHeader, entity EntityType, picType PictureType) (string, string, error) {
 	defer file.Close()
 	filename, ext, err := saveFileAndProcess(file, header, entity, picType, defaultThumbWidth, "")
-	return filename + ext, err
+	return filename, ext, err
 }
 
 func SaveImageWithThumb(file multipart.File, header *multipart.FileHeader, entity EntityType, picType PictureType, thumbWidth int, userid string) (string, string, error) {
@@ -181,6 +179,7 @@ func saveFileAndProcess(file multipart.File, header *multipart.FileHeader, entit
 // -------------------------
 
 func processImage(fullPath string, entity EntityType, picType PictureType, thumbWidth int, filename, ext string) error {
+	_ = picType
 	img, _, err := openImage(fullPath)
 	if err != nil {
 		if LogFunc != nil {
@@ -196,9 +195,6 @@ func processImage(fullPath string, entity EntityType, picType PictureType, thumb
 	if newPath != fullPath {
 		fullPath = newPath
 	}
-
-	// MQ notification
-	go notifyImageSaved(fullPath, entity, filepath.Base(fullPath), picType, filename)
 
 	// Thumbnail
 	imgCopy := imaging.Clone(img)
@@ -231,10 +227,6 @@ func openImage(path string) (image.Image, string, error) {
 	defer f.Close()
 	img, format, err := image.Decode(f)
 	return img, format, err
-}
-
-func notifyImageSaved(path string, entity EntityType, name string, picType PictureType, uid string) {
-	_ = mq.NotifyImageSaved(path, string(entity), name, string(picType), uid)
 }
 
 // -------------------------

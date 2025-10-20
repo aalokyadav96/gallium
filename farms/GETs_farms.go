@@ -69,7 +69,7 @@ func GetCropFarms(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 				Location:   farm.Location,
 				Breed:      crop.Notes,
 				PricePerKg: crop.Price,
-				ImageURL:   crop.ImageURL,
+				Banner:     crop.Banner,
 			})
 		}
 	}
@@ -110,6 +110,7 @@ func GetCropFarms(w http.ResponseWriter, r *http.Request, ps httprouter.Params) 
 		"limit":    limit,
 	})
 }
+
 func GetCropTypeFarms(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
@@ -169,7 +170,7 @@ func GetCropTypeFarms(w http.ResponseWriter, r *http.Request, ps httprouter.Para
 				AvailableQtyKg: crop.Quantity,
 				HarvestDate:    harvestDate,
 				Tags:           farm.Tags,
-				ImageURL:       crop.ImageURL,
+				Banner:         crop.Banner,
 			})
 		}
 	}

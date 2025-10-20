@@ -47,12 +47,12 @@ func UploadImage(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	}
 	defer file.Close()
 
-	path, err := filemgr.SaveFileForEntity(file, fileHeader[0], filemgr.EntityPost, filemgr.PicPhoto)
+	path, ext, err := filemgr.SaveFileForEntity(file, fileHeader[0], filemgr.EntityPost, filemgr.PicPhoto)
 	if err != nil {
 		utils.RespondWithError(w, http.StatusInternalServerError, "Image save failed")
 		return
 	}
-	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"url": path})
+	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"url": path, "ext": ext})
 }
 
 func CreateOrUpdatePost(w http.ResponseWriter, r *http.Request, ps httprouter.Params, isEdit bool) {

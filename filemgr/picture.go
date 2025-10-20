@@ -2,17 +2,16 @@ package filemgr
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"mime/multipart"
 	"naevis/db"
 	"naevis/globals"
-	"naevis/models"
-	"naevis/mq"
-	"naevis/rdx"
 	"naevis/utils"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -46,6 +45,8 @@ var entityMetaMap = map[string]entityMeta{
 	"farm":     {db.FarmsCollection, "farmid", "farm:", "createdBy"},
 	"crop":     {db.CropsCollection, "cropid", "crop:", "createdby"},
 	"feedpost": {db.PostsCollection, "postid", "feedpost:", "userid"},
+	"user":     {db.UserCollection, "userid", "user:", "userid"},
+	"recipe":   {db.RecipeCollection, "recipeid", "recipe:", "userId"},
 }
 
 func getEntityMeta(entityType string) (entityMeta, bool) {
@@ -57,6 +58,7 @@ func getEntityMeta(entityType string) (entityMeta, bool) {
 var pictureFieldMap = map[string]PictureType{
 	"banner": PicBanner,
 	"photo":  PicPhoto,
+	"avatar": PicPhoto,
 }
 
 // --- Authorization ---
@@ -96,11 +98,11 @@ func updateEntityBannerInDB(ctx context.Context, w http.ResponseWriter, entityTy
 		return err
 	}
 
-	if _, err := rdx.RdxDel(meta.cachePrefix + entityID); err != nil {
-		log.Printf("Cache deletion failed for %s ID: %s. Error: %v", entityType, entityID, err)
-	} else {
-		log.Printf("Cache invalidated for %s ID: %s", entityType, entityID)
-	}
+	// if _, err := rdx.RdxDel(meta.cachePrefix + entityID); err != nil {
+	// 	log.Printf("Cache deletion failed for %s ID: %s. Error: %v", entityType, entityID, err)
+	// } else {
+	// 	log.Printf("Cache invalidated for %s ID: %s", entityType, entityID)
+	// }
 	return nil
 }
 
@@ -121,38 +123,108 @@ func handleFileUpload(form *multipart.Form, field string, entity EntityType, pic
 	return SaveFormFile(form, field, entity, picType, true)
 }
 
-// --- Handler ---
 func EditBanner(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+	defer r.Body.Close()
+
 	entityTypeStr := ps.ByName("entitytype")
 	entityID := ps.ByName("entityid")
 
+	// --- Entity Validation ---
 	meta, ok := getEntityMeta(entityTypeStr)
 	if !ok || meta.collection == nil {
 		http.Error(w, "Unsupported entity type", http.StatusBadRequest)
 		return
 	}
 
-	// Validate user from context
+	// --- User Validation ---
 	requestingUserID, _ := r.Context().Value(globals.UserIDKey).(string)
 	if requestingUserID == "" {
 		http.Error(w, "Invalid user", http.StatusUnauthorized)
 		return
 	}
 
-	// Authorization check
+	// --- Authorization ---
 	if err := authorizeUserForEntity(r.Context(), entityTypeStr, entityID, requestingUserID); err != nil {
 		handleAuthError(w, err, entityTypeStr)
 		return
 	}
 
-	if err := r.ParseMultipartForm(10 << 20); err != nil {
-		http.Error(w, "Unable to parse form", http.StatusBadRequest)
+	// --- Extract Banner ---
+	field, fileName, err := extractBannerData(r, entityTypeStr)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	// detect which allowed field exists
+	// --- DB Update ---
+	updateFields := bson.M{
+		field:        fileName,
+		"updated_at": time.Now(),
+	}
+
+	if err := updateEntityBannerInDB(r.Context(), w, entityTypeStr, entityID, updateFields); err != nil {
+		log.Printf("DB update failed for %s:%s: %v", entityTypeStr, entityID, err)
+		http.Error(w, "Failed to update banner", http.StatusInternalServerError)
+		return
+	}
+
+	utils.RespondWithJSON(w, http.StatusOK, bson.M{
+		"success": true,
+		"data":    updateFields,
+	})
+}
+
+func extractBannerData(r *http.Request, entityTypeStr string) (string, string, error) {
+	ct := strings.ToLower(r.Header.Get("Content-Type"))
+
+	if strings.Contains(ct, "application/json") || strings.Contains(ct, "text/plain") {
+		return parseBannerFromJSON(r)
+	}
+
+	if strings.Contains(ct, "multipart/form-data") {
+		return parseBannerFromMultipart(r, entityTypeStr)
+	}
+
+	return "", "", fmt.Errorf("unsupported content type")
+}
+
+func parseBannerFromJSON(r *http.Request) (string, string, error) {
+	var payload map[string]string
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		return "", "", fmt.Errorf("invalid JSON body")
+	}
+
+	var foundField, fileURL string
+	for field := range pictureFieldMap {
+		if urlStr, ok := payload[field]; ok && urlStr != "" {
+			parsed, err := url.ParseRequestURI(urlStr)
+			if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+				return "", "", fmt.Errorf("invalid URL for %s", field)
+			}
+			if foundField != "" {
+				return "", "", fmt.Errorf("multiple banner URLs provided")
+			}
+			foundField = field
+			fileURL = urlStr
+		}
+	}
+
+	if foundField == "" {
+		return "", "", fmt.Errorf("no valid banner URL provided")
+	}
+
+	return foundField, fileURL, nil
+}
+
+func parseBannerFromMultipart(r *http.Request, entityTypeStr string) (string, string, error) {
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		return "", "", fmt.Errorf("unable to parse form data")
+	}
+	defer r.MultipartForm.RemoveAll()
+
 	var field string
 	var etype PictureType
+
 	for k, v := range pictureFieldMap {
 		if _, found := r.MultipartForm.File[k]; found {
 			field = k
@@ -160,37 +232,24 @@ func EditBanner(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 			break
 		}
 	}
+
 	if field == "" {
-		http.Error(w, "No banner or photo file uploaded", http.StatusBadRequest)
-		return
+		return "", "", fmt.Errorf("no banner or photo file uploaded")
 	}
 
-	// Save file
 	fileName, err := handleFileUpload(r.MultipartForm, field, EntityType(entityTypeStr), etype)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("%s upload failed: %v", field, err), http.StatusBadRequest)
-		return
+		log.Printf("upload error for %s: %v", field, err)
+		return "", "", fmt.Errorf("failed to upload %s", field)
 	}
+
 	if fileName == "" {
-		http.Error(w, fmt.Sprintf("No %s file uploaded", field), http.StatusBadRequest)
-		return
+		return "", "", fmt.Errorf("no %s file uploaded", field)
 	}
 
-	updateFields := bson.M{
-		field:        fileName,
-		"updated_at": time.Now(),
-	}
+	return field, fileName, nil
+}
 
-	if err := updateEntityBannerInDB(r.Context(), w, entityTypeStr, entityID, updateFields); err != nil {
-		return
-	}
-
-	// Best-effort MQ emit
-	go mq.Emit(r.Context(), fmt.Sprintf("%s-edited", entityTypeStr), models.Index{
-		EntityType: entityTypeStr,
-		EntityId:   entityID,
-		Method:     "PUT",
-	})
-
-	utils.RespondWithJSON(w, http.StatusOK, updateFields)
+func UpdateEntityPicsInDB(ctx context.Context, w http.ResponseWriter, entityType, entityID string, updateFields bson.M) error {
+	return updateEntityBannerInDB(ctx, w, entityType, entityID, updateFields)
 }

@@ -28,10 +28,10 @@ func GetUsersMeta(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	filter := bson.M{"userid": bson.M{"$in": ids}}
 
 	projection := bson.M{
-		"userid":          1,
-		"username":        1,
-		"name":            1,
-		"profile_picture": 1,
+		"userid":   1,
+		"username": 1,
+		"name":     1,
+		"avatar":   1,
 	}
 
 	findOptions := options.Find().SetProjection(projection)
@@ -46,18 +46,18 @@ func GetUsersMeta(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	result := make(map[string]map[string]string)
 	for cursor.Next(ctx) {
 		var user struct {
-			UserID         string `bson:"userid" json:"userid"`
-			Username       string `bson:"username" json:"username"`
-			Name           string `bson:"name,omitempty" json:"name,omitempty"`
-			ProfilePicture string `bson:"profile_picture,omitempty" json:"profile_picture,omitempty"`
+			UserID   string `bson:"userid" json:"userid"`
+			Username string `bson:"username" json:"username"`
+			Name     string `bson:"name,omitempty" json:"name,omitempty"`
+			Avatar   string `bson:"avatar,omitempty" json:"avatar,omitempty"`
 		}
 		if err := cursor.Decode(&user); err != nil {
 			continue
 		}
 		result[user.UserID] = map[string]string{
-			"username":        user.Username,
-			"name":            user.Name,
-			"profile_picture": user.ProfilePicture,
+			"username": user.Username,
+			"name":     user.Name,
+			"avatar":   user.Avatar,
 		}
 	}
 

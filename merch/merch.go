@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"naevis/db"
-	"naevis/filemgr"
 	"naevis/globals"
 	"naevis/models"
 	"naevis/mq"
@@ -13,7 +12,6 @@ import (
 	"naevis/userdata"
 	"naevis/utils"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
@@ -24,62 +22,52 @@ func CreateMerch(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	ctx := r.Context()
 	eventID := ps.ByName("eventid")
 	entityType := ps.ByName("entityType")
+
 	if eventID == "" {
 		http.Error(w, "Event ID is required", http.StatusBadRequest)
 		return
 	}
 
-	if err := r.ParseMultipartForm(10 << 20); err != nil {
-		http.Error(w, "Unable to parse form: "+err.Error(), http.StatusBadRequest)
+	var body struct {
+		Name     string  `json:"name"`
+		Price    float64 `json:"price"`
+		Stock    int     `json:"stock"`
+		MerchPic string  `json:"merch_pic"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	name := r.FormValue("name")
-	price, err := strconv.ParseFloat(r.FormValue("price"), 64)
-	if err != nil || price <= 0 {
+	if len(body.Name) == 0 || len(body.Name) > 100 {
+		http.Error(w, "Name must be between 1 and 100 characters.", http.StatusBadRequest)
+		return
+	}
+	if body.Price <= 0 {
 		http.Error(w, "Invalid price value. Must be a positive number.", http.StatusBadRequest)
 		return
 	}
-
-	stock, err := strconv.Atoi(r.FormValue("stock"))
-	if err != nil || stock < 0 {
+	if body.Stock < 0 {
 		http.Error(w, "Invalid stock value. Must be a non-negative integer.", http.StatusBadRequest)
-		return
-	}
-
-	if len(name) == 0 || len(name) > 100 {
-		http.Error(w, "Name must be between 1 and 100 characters.", http.StatusBadRequest)
 		return
 	}
 
 	merchID := utils.GenerateRandomString(14)
 
-	imageName, err := filemgr.SaveFormFile(
-		r.MultipartForm,
-		"image",
-		filemgr.EntityType("merch"),
-		filemgr.PictureType("photo"),
-		false,
-	)
-	if err != nil {
-		http.Error(w, "Image upload failed: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-
 	merch := models.Merch{
 		EntityType: entityType,
 		EntityID:   eventID,
-		Name:       name,
-		Price:      price,
-		Stock:      stock,
+		Name:       body.Name,
+		Price:      body.Price,
+		Stock:      body.Stock,
 		MerchID:    merchID,
-		MerchPhoto: imageName,
+		MerchPhoto: body.MerchPic,
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
 	}
 
-	_, err = db.MerchCollection.InsertOne(context.TODO(), merch)
-	if err != nil {
+	if _, err := db.MerchCollection.InsertOne(ctx, merch); err != nil {
 		http.Error(w, "Failed to insert merchandise: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
