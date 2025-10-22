@@ -152,7 +152,7 @@ func parseProductJSON(r *http.Request, itemType string) (models.Product, error) 
 		Featured:    payload.Featured,
 		Price:       payload.Price,
 		Quantity:    payload.Quantity,
-		ImageURLs:   payload.Images,
+		Images:      payload.Images,
 	}
 
 	// Parse date fields safely

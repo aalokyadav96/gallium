@@ -106,21 +106,54 @@ type CropListing struct {
 }
 
 type Product struct {
-	ProductID     string    `bson:"productid,omitempty" json:"productid"`
-	Name          string    `bson:"name" json:"name"`
-	Description   string    `bson:"description" json:"description"`
-	Price         float64   `bson:"price" json:"price"`
-	Banner        string    `bson:"banner" json:"banner"`
-	ImageURLs     []string  `bson:"imageUrls" json:"imageUrls"`
-	Category      string    `bson:"category" json:"category"`
-	Type          string    `bson:"type" json:"type"`
-	Quantity      float64   `bson:"quantity" json:"quantity"`
-	Unit          string    `bson:"unit" json:"unit"`
-	SKU           string    `bson:"sku,omitempty" json:"sku,omitempty"`
+	ProductID   string   `bson:"productid,omitempty" json:"productid"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Price       float64  `json:"price"`
+	Unit        string   `json:"unit"`
+	Images      []string `json:"images"`
+	Category    string   `bson:"category" json:"category"`
+	Quantity    float64  `bson:"quantity" json:"quantity"`
+	Type        string   `bson:"type" json:"type"`
+
+	// Physical product fields
+	Size        string            `json:"size,omitempty"`
+	Color       string            `json:"color,omitempty"`
+	Ingredients string            `json:"ingredients,omitempty"`
+	ExpiryDate  string            `json:"expiryDate,omitempty"`
+	Weight      string            `json:"weight,omitempty"`
+	Specs       map[string]string `json:"specs,omitempty"`
+
+	// Media fields
+	Author     string `json:"author,omitempty"`     // book
+	ISBN       string `json:"isbn,omitempty"`       // book
+	Platform   string `json:"platform,omitempty"`   // software
+	Version    string `json:"version,omitempty"`    // software
+	License    string `json:"license,omitempty"`    // software
+	Instructor string `json:"instructor,omitempty"` // course
+	Duration   string `json:"duration,omitempty"`   // course / subscription
+
+	// Subscription fields
+	BillingCycle string `json:"billingCycle,omitempty"`
+	TrialPeriod  string `json:"trialPeriod,omitempty"`
+	Scope        string `json:"scope,omitempty"`
+
+	// Creative / art
+	Artist     string `json:"artist,omitempty"`
+	Medium     string `json:"medium,omitempty"`
+	Dimensions string `json:"dimensions,omitempty"`
+
+	// Vehicle fields
+	Engine   string `json:"engine,omitempty"`
+	Mileage  string `json:"mileage,omitempty"`
+	FuelType string `json:"fuelType,omitempty"`
+
+	Featured      bool      `json:"featured,omitempty"`
+	SKU           string    `json:"sku,omitempty"`
 	AvailableFrom *SafeTime `bson:"availableFrom,omitempty" json:"availableFrom,omitempty"`
 	AvailableTo   *SafeTime `bson:"availableTo,omitempty" json:"availableTo,omitempty"`
-	Featured      bool      `bson:"featured,omitempty" json:"featured,omitempty"`
 	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
 }
 
 type SafeTime struct {

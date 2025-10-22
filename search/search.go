@@ -216,8 +216,8 @@ func ConvertToEntity(ctx context.Context, data interface{}) (Entity, error) {
 		return Entity{EntityID: v.RecipeId, EntityType: "recipes", Title: v.Title, Image: v.Banner, Description: v.Description, CreatedAt: parseTime(v.CreatedAt)}, nil
 	case models.Product:
 		var img string
-		if len(v.ImageURLs) > 0 {
-			img = v.ImageURLs[0]
+		if len(v.Images) > 0 {
+			img = v.Images[0]
 		}
 		return Entity{EntityID: v.ProductID, EntityType: "products", Title: v.Name, Image: img, Description: v.Description, CreatedAt: parseTime(v.CreatedAt)}, nil
 	case models.Menu:
